@@ -1,0 +1,3270 @@
+title: Zuhause
+kiosk_mode:
+  non_admin_settings:
+    hide_sidebar: true
+    hide_menubutton: true
+    hide_search: true
+    hide_assistant: true
+    hide_overflow: true
+    hide_account: true
+    hide_notifications: true
+views:
+  - title: Start
+    path: start
+    icon: mdi:home-variant
+    type: sections
+    max_columns: 4
+    dense_section_placement: true
+    header:
+      layout: responsive
+      badges_position: bottom
+      card:
+        type: markdown
+        text_only: true
+        content: >-
+          {%- set h = now().hour -%}
+
+          {%- set rm =
+          expand('binary_sensor.eg_flur_haustur_rauch','binary_sensor.eg_flur_treppe_rauch','binary_sensor.eleano_rauch','binary_sensor.mattia_rauch','binary_sensor.og_flur_rauch')
+          -%}
+
+          {%- set alarm = rm | selectattr('state','eq','on') | list -%}
+
+          {%- set weg = rm | rejectattr('state','in',['on','off']) | list -%}
+
+          {%- set w = states('weather.forecast_home') -%}
+
+          {%- set m =
+          {'clear-night':'Klar','cloudy':'Bewölkt','fog':'Nebel','hail':'Hagel','lightning':'Gewitter','lightning-rainy':'Gewitter
+          mit Regen','partlycloudy':'Teilweise bewölkt','pouring':'Starker
+          Regen','rainy':'Regen','snowy':'Schnee','snowy-rainy':'Schneeregen','sunny':'Sonnig','windy':'Windig','windy-variant':'Windig','exceptional':'Unwetter'}
+          -%}
+
+          ## {% if h < 5 %}Gute Nacht{% elif h < 11 %}Guten Morgen{% elif h < 14
+          %}Guten Tag{% elif h < 18 %}Schönen Nachmittag{% else %}Guten Abend{%
+          endif %}
+
+
+          {% if alarm | count > 0 %}🔥 **Rauch erkannt – {{ alarm |
+          map(attribute='name') | join(', ') }}**{% elif weg | count > 0 %}⚠️ {{
+          weg | count }} Rauchmelder nicht erreichbar{% else %}✓ Zuhause ist
+          alles in Ordnung{% endif %} · {{ m.get(w, w) }}, {{
+          state_attr('weather.forecast_home','temperature') | round(0) }} °C ·
+          {{ 'Fabrizio zuhause' if is_state('person.fabrizio_calcagno','home')
+          else 'Fabrizio unterwegs' }}
+    badges:
+      - type: entity
+        entity: weather.forecast_home
+        name: Wetter
+        show_name: false
+        state_content:
+          - state
+          - temperature
+        color: blue
+      - type: entity
+        entity: person.fabrizio_calcagno
+        name: Fabrizio
+        show_name: true
+        color: green
+      - type: entity
+        entity: sensor.stp10_0_3av_40_278_pv_power
+        name: PV erzeugt
+        show_name: true
+        icon: mdi:solar-power-variant
+        color: amber
+      - type: entity
+        entity: binary_sensor.rpi_power_status
+        name: Stromversorgung Server
+        show_name: true
+        color: red
+        visibility:
+          - condition: state
+            entity: binary_sensor.rpi_power_status
+            state: 'on'
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:mushroom-template-card
+            primary: RAUCHALARM
+            secondary: >-
+              {% set rm =
+              expand('binary_sensor.eg_flur_haustur_rauch','binary_sensor.eg_flur_treppe_rauch','binary_sensor.eleano_rauch','binary_sensor.mattia_rauch','binary_sensor.og_flur_rauch')
+              %}{{ rm | selectattr('state','eq','on') | map(attribute='name') |
+              join(', ') }}
+            icon: mdi:fire-alert
+            icon_color: red
+            multiline_secondary: true
+            tap_action:
+              action: navigate
+              navigation_path: '#sicherheit'
+            visibility:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity: binary_sensor.eg_flur_haustur_rauch
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.eg_flur_treppe_rauch
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.eleano_rauch
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.mattia_rauch
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.og_flur_rauch
+                    state: 'on'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 24px;
+                  background: rgba(244, 67, 54, 0.15);
+                  border: 1px solid rgba(244, 67, 54, 0.5);
+                  --card-primary-font-size: 20px;
+                  --card-primary-font-weight: 700;
+                  --card-primary-color: #f44336;
+                }
+          - type: custom:mushroom-chips-card
+            alignment: start
+            grid_options:
+              columns: full
+            chips:
+              - type: template
+                icon: mdi:shield-check
+                icon_color: >-
+                  {% set rm =
+                  expand('binary_sensor.eg_flur_haustur_rauch','binary_sensor.eg_flur_treppe_rauch','binary_sensor.eleano_rauch','binary_sensor.mattia_rauch','binary_sensor.og_flur_rauch')
+                  %}{% if rm | selectattr('state','eq','on') | list | count > 0
+                  %}red{% elif rm | rejectattr('state','in',['on','off']) | list
+                  | count > 0 %}orange{% else %}green{% endif %}
+                content: >-
+                  {% set rm =
+                  expand('binary_sensor.eg_flur_haustur_rauch','binary_sensor.eg_flur_treppe_rauch','binary_sensor.eleano_rauch','binary_sensor.mattia_rauch','binary_sensor.og_flur_rauch')
+                  %}{% set ok = rm | selectattr('state','eq','off') | list |
+                  count %}{% if rm | selectattr('state','eq','on') | list |
+                  count > 0 %}RAUCHALARM{% elif ok < 5 %}Rauchmelder {{ ok }}/5
+                  OK{% else %}Rauchmelder alle OK{% endif %}
+                tap_action:
+                  action: navigate
+                  navigation_path: '#sicherheit'
+              - type: template
+                icon: >-
+                  {% set ns = namespace(l=[]) %}{% for e, n in
+                  [('binary_sensor.vorne_rechts_bewegung','vorne
+                  rechts'),('binary_sensor.vorne_links_bewegung','vorne
+                  links'),('binary_sensor.hinterm_haus_duo_bewegung','hinterm
+                  Haus'),('binary_sensor.west_bewegung','West')] %}{% if
+                  is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif %}{%
+                  endfor %}{{ 'mdi:motion-sensor' if ns.l | count > 0 else
+                  'mdi:motion-sensor-off' }}
+                icon_color: >-
+                  {% set ns = namespace(l=[]) %}{% for e, n in
+                  [('binary_sensor.vorne_rechts_bewegung','vorne
+                  rechts'),('binary_sensor.vorne_links_bewegung','vorne
+                  links'),('binary_sensor.hinterm_haus_duo_bewegung','hinterm
+                  Haus'),('binary_sensor.west_bewegung','West')] %}{% if
+                  is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif %}{%
+                  endfor %}{{ 'orange' if ns.l | count > 0 else 'disabled' }}
+                content: >-
+                  {% set ns = namespace(l=[]) %}{% for e, n in
+                  [('binary_sensor.vorne_rechts_bewegung','vorne
+                  rechts'),('binary_sensor.vorne_links_bewegung','vorne
+                  links'),('binary_sensor.hinterm_haus_duo_bewegung','hinterm
+                  Haus'),('binary_sensor.west_bewegung','West')] %}{% if
+                  is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif %}{%
+                  endfor %}{{ 'Bewegung ' ~ (ns.l | join(', ')) if ns.l | count
+                  > 0 else 'Draußen ruhig' }}
+                tap_action:
+                  action: navigate
+                  navigation_path: /zuhause-neu/kameras
+              - type: template
+                icon: mdi:lightbulb-group
+                icon_color: >-
+                  {% set l =
+                  expand('light.vorne_links_flutlicht','light.hinterm_haus_duo_flutlicht','light.west_flutlicht')
+                  | selectattr('state','eq','on') | list | count %}{{ 'amber' if
+                  l > 0 else 'disabled' }}
+                content: >-
+                  {% set l =
+                  expand('light.vorne_links_flutlicht','light.hinterm_haus_duo_flutlicht','light.west_flutlicht')
+                  | selectattr('state','eq','on') | list | count %}{{
+                  'Außenlicht ' ~ l ~ '/3 an' if l > 0 else 'Außenlicht aus' }}
+              - type: template
+                icon: >-
+                  {%- set s = states('sensor.tuya_ev_charger_status') -%} {%- if
+                  is_state('binary_sensor.wallbox_fehler','on')
+                  -%}mdi:alert-circle {%- elif
+                  is_state('binary_sensor.wallbox_ladung_aktiv','on')
+                  -%}mdi:battery-charging-high {%- elif s == 'charged'
+                  -%}mdi:battery-check {%- elif
+                  is_state('binary_sensor.wallbox_auto_angeschlossen','on')
+                  -%}mdi:ev-plug-type2 {%- else -%}mdi:ev-station{%- endif -%}
+                icon_color: >-
+                  {%- set s = states('sensor.tuya_ev_charger_status') -%} {%- if
+                  is_state('binary_sensor.wallbox_fehler','on') -%}red {%- elif
+                  is_state('binary_sensor.wallbox_ladung_aktiv','on') -%}{{
+                  'amber' if
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  else 'green' }} {%- elif s == 'charged' -%}green {%- elif s ==
+                  'paused' -%}orange {%- elif
+                  is_state('binary_sensor.wallbox_auto_angeschlossen','on')
+                  -%}blue {%- else -%}disabled{%- endif -%}
+                content: >-
+                  {%- set s = states('sensor.tuya_ev_charger_status') -%} {%-
+                  set p = states('sensor.tuya_ev_charger_total_power') |
+                  float(0) -%} {%- if
+                  is_state('binary_sensor.wallbox_fehler','on')
+                  -%}Wallbox-Störung {%- elif
+                  is_state('binary_sensor.wallbox_ladung_aktiv','on') -%}Auto
+                  lädt {{ p | round(1) }} kW{{ ' · ⚡ Sofort' if
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  else (' · ☀️ PV' if
+                  is_state('binary_sensor.wallbox_pv_ladung_aktiv','on') else
+                  '') }} {%- elif s == 'charged' -%}Auto voll geladen {%- elif s
+                  == 'paused' -%}Laden pausiert {%- elif s == 'waiting' -%}Auto
+                  wartet auf Freigabe {%- elif
+                  is_state('binary_sensor.wallbox_auto_angeschlossen','on')
+                  -%}Auto angeschlossen {%- else -%}Wallbox bereit{%- endif -%}
+                tap_action:
+                  action: navigate
+                  navigation_path: /zuhause-neu/energie
+              - type: conditional
+                conditions:
+                  - entity: media_player.samsung_cu6979_65_wohnzimmer_gu65cu6979uxzg
+                    state_not: 'off'
+                  - entity: media_player.samsung_cu6979_65_wohnzimmer_gu65cu6979uxzg
+                    state_not: unavailable
+                  - entity: media_player.samsung_cu6979_65_wohnzimmer_gu65cu6979uxzg
+                    state_not: standby
+                chip:
+                  type: template
+                  icon: mdi:television
+                  icon_color: blue
+                  content: Wohnzimmer-TV an
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.rpi_power_status
+                    state: 'on'
+                chip:
+                  type: template
+                  icon: mdi:power-plug-off
+                  icon_color: red
+                  content: Stromversorgung prüfen
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Energie
+            heading_style: title
+            icon: mdi:lightning-bolt
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 4
+            icon: mdi:solar-power-variant
+            icon_color: >-
+              {{ 'amber' if states('sensor.stp10_0_3av_40_278_pv_power') |
+              float(0) > 50 else 'grey' }}
+            primary: >-
+              {% set p = states('sensor.stp10_0_3av_40_278_pv_power') | float(0)
+              %}{% if p >= 1000 %}{{ (p / 1000) | round(2) }} kW{% else %}{{ p |
+              round(0) | int }} W{% endif %}
+            secondary: PV erzeugt
+            layout: vertical
+            tap_action:
+              action: navigate
+              navigation_path: '#energie'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  --card-primary-font-size: 18px;
+                  --card-primary-font-weight: 700;
+                  --card-secondary-font-size: 12px;
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 4
+            icon: mdi:home-lightning-bolt-outline
+            icon_color: blue
+            primary: >-
+              {% set p = [ states('sensor.stp10_0_3av_40_278_pv_power') |
+              float(0) + states('sensor.shellypro3em_38182bdee0e0_leistung') |
+              float(0), 0 ] | max %}{% if p >= 1000 %}{{ (p / 1000) | round(2)
+              }} kW{% else %}{{ p | round(0) | int }} W{% endif %}
+            secondary: Haus braucht
+            layout: vertical
+            tap_action:
+              action: navigate
+              navigation_path: '#energie'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  --card-primary-font-size: 18px;
+                  --card-primary-font-weight: 700;
+                  --card-secondary-font-size: 12px;
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 4
+            icon: >-
+              {% set n = states('sensor.shellypro3em_38182bdee0e0_leistung') |
+              float(0) %}{{ 'mdi:transmission-tower-export' if n < 0 else
+              'mdi:transmission-tower-import' }}
+            icon_color: >-
+              {% set n = states('sensor.shellypro3em_38182bdee0e0_leistung') |
+              float(0) %}{{ 'green' if n < 0 else 'orange' }}
+            primary: >-
+              {% set n = (states('sensor.shellypro3em_38182bdee0e0_leistung') |
+              float(0)) | abs %}{% if n >= 1000 %}{{ (n / 1000) | round(2) }}
+              kW{% else %}{{ n | round(0) | int }} W{% endif %}
+            secondary: >-
+              {{ 'Einspeisung' if
+              states('sensor.shellypro3em_38182bdee0e0_leistung') | float(0) < 0
+              else 'Netzbezug' }}
+            layout: vertical
+            tap_action:
+              action: navigate
+              navigation_path: '#energie'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  --card-primary-font-size: 18px;
+                  --card-primary-font-weight: 700;
+                  --card-secondary-font-size: 12px;
+                }
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Haustür
+            heading_style: title
+            icon: mdi:doorbell-video
+          - type: picture-entity
+            entity: camera.tuerklingel_standardauflosung
+            camera_view: auto
+            aspect_ratio: '16:9'
+            show_name: false
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: '#tuerklingel'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  overflow: hidden;
+                  transition: all 0.3s ease;
+                  {% if is_state('binary_sensor.tuerklingel_person','on') %}
+                  border: 3px solid rgb(244, 67, 54);
+                  box-shadow: 0 0 16px rgba(244, 67, 54, 0.55);
+                  {% elif is_state('binary_sensor.tuerklingel_bewegung','on') %}
+                  border: 3px solid rgb(255, 152, 0);
+                  box-shadow: 0 0 12px rgba(255, 152, 0, 0.45);
+                  {% else %}
+                  border: 3px solid transparent;
+                  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+                  {% endif %}
+                }
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: template
+                icon: mdi:bell-ring
+                icon_color: >-
+                  {{ 'red' if
+                  is_state('binary_sensor.tuerklingel_besucher','on') else
+                  'grey' }}
+                content: >-
+                  {{ 'Es klingelt!' if
+                  is_state('binary_sensor.tuerklingel_besucher','on') else
+                  'Ruhig' }}
+              - type: template
+                icon: mdi:account
+                icon_color: >-
+                  {{ 'orange' if
+                  is_state('binary_sensor.tuerklingel_person','on') else 'grey'
+                  }}
+                content: >-
+                  {{ 'Person an der Tür' if
+                  is_state('binary_sensor.tuerklingel_person','on') else 'Keine
+                  Person' }}
+              - type: template
+                icon: mdi:motion-sensor
+                icon_color: >-
+                  {{ 'orange' if
+                  is_state('binary_sensor.tuerklingel_bewegung','on') else
+                  'grey' }}
+                content: >-
+                  {{ 'Bewegung' if
+                  is_state('binary_sensor.tuerklingel_bewegung','on') else
+                  'Keine Bewegung' }}
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Außenkameras
+            heading_style: title
+            icon: mdi:cctv
+            badges:
+              - type: entity
+                entity: binary_sensor.vorne_rechts_person
+                name: Vorne rechts
+                color: orange
+                visibility:
+                  - condition: state
+                    entity: binary_sensor.vorne_rechts_person
+                    state: 'on'
+              - type: entity
+                entity: binary_sensor.vorne_links_person
+                name: Vorne links
+                color: orange
+                visibility:
+                  - condition: state
+                    entity: binary_sensor.vorne_links_person
+                    state: 'on'
+              - type: entity
+                entity: binary_sensor.hinterm_haus_duo_person
+                name: Hinterm Haus
+                color: orange
+                visibility:
+                  - condition: state
+                    entity: binary_sensor.hinterm_haus_duo_person
+                    state: 'on'
+              - type: entity
+                entity: binary_sensor.west_person
+                name: West
+                color: orange
+                visibility:
+                  - condition: state
+                    entity: binary_sensor.west_person
+                    state: 'on'
+          - type: picture-entity
+            grid_options:
+              columns: 6
+            entity: camera.vorne_rechts_standardauflosung
+            camera_view: auto
+            aspect_ratio: '16:9'
+            name: Vorne rechts
+            show_state: false
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  overflow: hidden;
+                  transition: all 0.3s ease;
+                  {% if is_state('binary_sensor.vorne_rechts_person','on') %}
+                  border: 3px solid rgb(244, 67, 54);
+                  box-shadow: 0 0 16px rgba(244, 67, 54, 0.55);
+                  {% elif is_state('binary_sensor.vorne_rechts_bewegung','on') %}
+                  border: 3px solid rgb(255, 152, 0);
+                  box-shadow: 0 0 12px rgba(255, 152, 0, 0.45);
+                  {% else %}
+                  border: 3px solid transparent;
+                  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+                  {% endif %}
+                }
+          - type: picture-entity
+            grid_options:
+              columns: 6
+            entity: camera.vorne_links_standardauflosung
+            camera_view: auto
+            aspect_ratio: '16:9'
+            name: Vorne links
+            show_state: false
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  overflow: hidden;
+                  transition: all 0.3s ease;
+                  {% if is_state('binary_sensor.vorne_links_person','on') %}
+                  border: 3px solid rgb(244, 67, 54);
+                  box-shadow: 0 0 16px rgba(244, 67, 54, 0.55);
+                  {% elif is_state('binary_sensor.vorne_links_bewegung','on') %}
+                  border: 3px solid rgb(255, 152, 0);
+                  box-shadow: 0 0 12px rgba(255, 152, 0, 0.45);
+                  {% else %}
+                  border: 3px solid transparent;
+                  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+                  {% endif %}
+                }
+          - type: custom:bubble-card
+            card_type: button
+            button_type: name
+            name: Alle Kameras
+            icon: mdi:grid
+            tap_action:
+              action: navigate
+              navigation_path: /zuhause-neu/kameras
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Außenbeleuchtung
+            heading_style: title
+            icon: mdi:spotlight-beam
+          - type: custom:bubble-card
+            card_type: button
+            button_type: switch
+            entity: light.vorne_links_flutlicht
+            name: Vorne links
+            icon: mdi:spotlight-beam
+            show_state: true
+          - type: custom:bubble-card
+            card_type: button
+            button_type: switch
+            entity: light.hinterm_haus_duo_flutlicht
+            name: Hinterm Haus
+            icon: mdi:spotlight-beam
+            show_state: true
+          - type: custom:bubble-card
+            card_type: button
+            button_type: switch
+            entity: light.west_flutlicht
+            name: West
+            icon: mdi:spotlight-beam
+            show_state: true
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Wohnzimmer
+            heading_style: title
+            icon: mdi:sofa
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: media_player.samsung_cu6979_65_wohnzimmer_gu65cu6979uxzg
+                state_not: 'off'
+              - condition: state
+                entity: media_player.samsung_cu6979_65_wohnzimmer_gu65cu6979uxzg
+                state_not: unavailable
+              - condition: state
+                entity: media_player.samsung_cu6979_65_wohnzimmer_gu65cu6979uxzg
+                state_not: standby
+            card:
+              type: custom:mushroom-media-player-card
+              entity: media_player.samsung_cu6979_65_wohnzimmer_gu65cu6979uxzg
+              name: Fernseher
+              icon: mdi:television-play
+              use_media_info: true
+              show_volume_level: true
+              media_controls:
+                - play_pause_stop
+                - previous
+                - next
+              volume_controls:
+                - volume_buttons
+                - volume_mute
+              card_mod:
+                style: |
+                  ha-card { border-radius: 20px; }
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: media_player.samsung_cu6979_65_wohnzimmer_gu65cu6979uxzg
+                state:
+                  - 'off'
+                  - standby
+                  - unavailable
+            card:
+              type: custom:bubble-card
+              card_type: button
+              button_type: name
+              entity: media_player.samsung_cu6979_65_wohnzimmer_gu65cu6979uxzg
+              name: Fernseher aus
+              icon: mdi:television-off
+              tap_action:
+                action: more-info
+      - type: grid
+        column_span: 4
+        cards:
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#sicherheit'
+            name: Sicherheit
+            icon: mdi:shield-home
+            cards:
+              - type: custom:mushroom-template-card
+                primary: >-
+                  {% set rm =
+                  expand('binary_sensor.eg_flur_haustur_rauch','binary_sensor.eg_flur_treppe_rauch','binary_sensor.eleano_rauch','binary_sensor.mattia_rauch','binary_sensor.og_flur_rauch')
+                  %}{% set alarm = rm | selectattr('state','eq','on') | list
+                  %}{% set weg = rm | rejectattr('state','in',['on','off']) |
+                  list %}{% if alarm | count > 0 %}Rauch erkannt{% elif weg |
+                  count > 0 %}{{ weg | count }} Melder offline{% else %}5
+                  Rauchmelder OK{% endif %}
+                secondary: >-
+                  {% set b =
+                  ['sensor.eg_flur_haustur_batteriestatus','sensor.eg_flur_treppe_batteriestatus','sensor.eleano_batteriestatus','sensor.mattia_batteriestatus','sensor.og_flur_batteriestatus']
+                  %}{% set low = b | map('states') | map('float', 100) |
+                  select('lt', 20) | list | count %}{{ 'Alle Batterien in
+                  Ordnung' if low == 0 else low ~ ' Melder mit schwacher
+                  Batterie' }}
+                icon: mdi:shield-check
+                icon_color: >-
+                  {% set rm =
+                  expand('binary_sensor.eg_flur_haustur_rauch','binary_sensor.eg_flur_treppe_rauch','binary_sensor.eleano_rauch','binary_sensor.mattia_rauch','binary_sensor.og_flur_rauch')
+                  %}{% if rm | selectattr('state','eq','on') | list | count > 0
+                  %}red{% elif rm | rejectattr('state','in',['on','off']) | list
+                  | count > 0 %}orange{% else %}green{% endif %}
+              - type: heading
+                heading: Rauchmelder
+                heading_style: title
+                icon: mdi:smoke-detector-variant
+              - type: grid
+                columns: 1
+                square: false
+                cards:
+                  - type: custom:mushroom-template-card
+                    entity: binary_sensor.eg_flur_haustur_rauch
+                    primary: EG Flur Haustür
+                    secondary: >-
+                      {% if states('binary_sensor.eg_flur_haustur_rauch') not in
+                      ['on','off'] %}Nicht erreichbar{% else %}Batterie {{
+                      states('sensor.eg_flur_haustur_batteriestatus') }}{{
+                      state_attr('sensor.eg_flur_haustur_batteriestatus','unit_of_measurement')
+                      or '' }}{% endif %}
+                    icon: mdi:smoke-detector-variant
+                    icon_color: >-
+                      {% set s = states('binary_sensor.eg_flur_haustur_rauch')
+                      %}{% if s == 'on' %}red{% elif s != 'off' %}orange{% else
+                      %}green{% endif %}
+                    tap_action:
+                      action: more-info
+                  - type: custom:mushroom-template-card
+                    entity: binary_sensor.eg_flur_treppe_rauch
+                    primary: EG Flur Treppe
+                    secondary: >-
+                      {% if states('binary_sensor.eg_flur_treppe_rauch') not in
+                      ['on','off'] %}Nicht erreichbar{% else %}Batterie {{
+                      states('sensor.eg_flur_treppe_batteriestatus') }}{{
+                      state_attr('sensor.eg_flur_treppe_batteriestatus','unit_of_measurement')
+                      or '' }}{% endif %}
+                    icon: mdi:smoke-detector-variant
+                    icon_color: >-
+                      {% set s = states('binary_sensor.eg_flur_treppe_rauch')
+                      %}{% if s == 'on' %}red{% elif s != 'off' %}orange{% else
+                      %}green{% endif %}
+                    tap_action:
+                      action: more-info
+                  - type: custom:mushroom-template-card
+                    entity: binary_sensor.og_flur_rauch
+                    primary: OG Flur
+                    secondary: >-
+                      {% if states('binary_sensor.og_flur_rauch') not in
+                      ['on','off'] %}Nicht erreichbar{% else %}Batterie {{
+                      states('sensor.og_flur_batteriestatus') }}{{
+                      state_attr('sensor.og_flur_batteriestatus','unit_of_measurement')
+                      or '' }}{% endif %}
+                    icon: mdi:smoke-detector-variant
+                    icon_color: >-
+                      {% set s = states('binary_sensor.og_flur_rauch') %}{% if s
+                      == 'on' %}red{% elif s != 'off' %}orange{% else %}green{%
+                      endif %}
+                    tap_action:
+                      action: more-info
+                  - type: custom:mushroom-template-card
+                    entity: binary_sensor.eleano_rauch
+                    primary: Eleano
+                    secondary: >-
+                      {% if states('binary_sensor.eleano_rauch') not in
+                      ['on','off'] %}Nicht erreichbar{% else %}Batterie {{
+                      states('sensor.eleano_batteriestatus') }}{{
+                      state_attr('sensor.eleano_batteriestatus','unit_of_measurement')
+                      or '' }}{% endif %}
+                    icon: mdi:smoke-detector-variant
+                    icon_color: >-
+                      {% set s = states('binary_sensor.eleano_rauch') %}{% if s
+                      == 'on' %}red{% elif s != 'off' %}orange{% else %}green{%
+                      endif %}
+                    tap_action:
+                      action: more-info
+                  - type: custom:mushroom-template-card
+                    entity: binary_sensor.mattia_rauch
+                    primary: Mattia
+                    secondary: >-
+                      {% if states('binary_sensor.mattia_rauch') not in
+                      ['on','off'] %}Nicht erreichbar{% else %}Batterie {{
+                      states('sensor.mattia_batteriestatus') }}{{
+                      state_attr('sensor.mattia_batteriestatus','unit_of_measurement')
+                      or '' }}{% endif %}
+                    icon: mdi:smoke-detector-variant
+                    icon_color: >-
+                      {% set s = states('binary_sensor.mattia_rauch') %}{% if s
+                      == 'on' %}red{% elif s != 'off' %}orange{% else %}green{%
+                      endif %}
+                    tap_action:
+                      action: more-info
+              - type: heading
+                heading: System
+                heading_style: title
+                icon: mdi:server
+              - type: custom:mushroom-template-card
+                entity: binary_sensor.rpi_power_status
+                primary: Stromversorgung Server
+                secondary: >-
+                  {{ 'Unterspannung erkannt' if
+                  is_state('binary_sensor.rpi_power_status','on') else 'In
+                  Ordnung' }}
+                icon: mdi:raspberry-pi
+                icon_color: >-
+                  {{ 'red' if is_state('binary_sensor.rpi_power_status','on')
+                  else 'green' }}
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#energie'
+            name: Energie
+            icon: mdi:lightning-bolt
+            cards:
+              - type: grid
+                columns: 2
+                square: false
+                cards:
+                  - type: tile
+                    entity: sensor.stp10_0_3av_40_278_pv_power
+                    name: PV erzeugt jetzt
+                    color: amber
+                  - type: tile
+                    entity: sensor.shellypro3em_38182bdee0e0_leistung
+                    name: Netz jetzt
+                    color: blue
+                  - type: tile
+                    entity: sensor.stp10_0_3av_40_278_daily_yield
+                    name: PV-Ertrag heute
+                    color: amber
+                  - type: tile
+                    entity: sensor.stp10_0_3av_40_278_total_yield
+                    name: PV gesamt – Zählerstand
+                    color: green
+                  - type: tile
+                    entity: sensor.shellypro3em_38182bdee0e0_energie
+                    name: Netzbezug – Zählerstand
+                    color: orange
+                  - type: tile
+                    entity: sensor.shellypro3em_38182bdee0e0_energieeinspeisung
+                    name: Einspeisung – Zählerstand
+                    color: green
+              - type: heading
+                heading: Verlauf
+                heading_style: title
+                icon: mdi:chart-line
+              - type: history-graph
+                hours_to_show: 24
+                entities:
+                  - entity: sensor.stp10_0_3av_40_278_pv_power
+                    name: PV
+                  - entity: sensor.shellypro3em_38182bdee0e0_leistung
+                    name: Netz
+              - type: heading
+                heading: Technik
+                heading_style: title
+                icon: mdi:cog-outline
+              - type: entities
+                entities:
+                  - entity: sensor.stp10_0_3av_40_278_status
+                    name: Wechselrichter
+                  - entity: sensor.stp10_0_3av_40_278_pv_power_a
+                    name: String A
+                  - entity: sensor.stp10_0_3av_40_278_pv_power_b
+                    name: String B
+                  - entity: sensor.stp10_0_3av_40_278_grid_power
+                    name: Netzleistung (SMA)
+                  - entity: sensor.shellypro3em_38182bdee0e0_temperatur
+                    name: Shelly Temperatur
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#tuerklingel'
+            name: Türklingel
+            icon: mdi:doorbell-video
+            cards:
+              - type: picture-entity
+                entity: camera.tuerklingel_fliessend
+                camera_view: live
+                aspect_ratio: '16:9'
+                show_name: false
+                show_state: false
+              - type: custom:mushroom-chips-card
+                alignment: center
+                chips:
+                  - type: entity
+                    entity: binary_sensor.tuerklingel_besucher
+                    name: Klingel
+                    icon: mdi:bell-ring
+                  - type: entity
+                    entity: binary_sensor.tuerklingel_person
+                    name: Person
+                    icon: mdi:account
+                  - type: entity
+                    entity: binary_sensor.tuerklingel_bewegung
+                    name: Bewegung
+                    icon: mdi:motion-sensor
+              - type: heading
+                heading: Einstellungen
+                heading_style: title
+                icon: mdi:tune
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: light.tuerklingel_infrarotlicht_im_nachtmodus
+                name: Infrarotlicht
+                icon: mdi:light-flood-down
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: switch.tuerklingel_klingelknopfton
+                name: Klingelton
+                icon: mdi:music-note
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: switch.tuerklingel_push_benachrichtigungen
+                name: Push-Benachrichtigungen
+                icon: mdi:cellphone-message
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: switch.tuerklingel_aufzeichnen
+                name: Aufzeichnung
+                icon: mdi:record-rec
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                entity: siren.tuerklingel_sirene
+                name: Sirene auslösen (gedrückt halten)
+                icon: mdi:bullhorn
+                tap_action:
+                  action: none
+                hold_action:
+                  action: perform-action
+                  perform_action: siren.turn_on
+                  target:
+                    entity_id: siren.tuerklingel_sirene
+                  confirmation:
+                    text: Sirene an der Türklingel wirklich auslösen?
+  - title: Energie
+    path: energie
+    icon: mdi:lightning-bolt
+    type: sections
+    max_columns: 3
+    badges:
+      - type: entity
+        entity: sensor.stp10_0_3av_40_278_pv_power
+        name: PV erzeugt jetzt
+        show_name: true
+        icon: mdi:solar-power-variant
+        color: amber
+      - type: entity
+        entity: sensor.stp10_0_3av_40_278_daily_yield
+        name: PV-Ertrag heute
+        show_name: true
+        icon: mdi:weather-sunny
+        color: green
+    sections:
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Gerade jetzt
+            heading_style: title
+            icon: mdi:flash
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            primary: >-
+              {% set n = states('sensor.shellypro3em_38182bdee0e0_leistung') |
+              float(0) %}{% if n < -50 %}Du speist gerade ein{% elif n > 50 %}Du
+              beziehst gerade Strom{% else %}Ausgeglichen{% endif %}
+            secondary: >-
+              {% set pv = states('sensor.stp10_0_3av_40_278_pv_power') |
+              float(0) %}{% set n =
+              states('sensor.shellypro3em_38182bdee0e0_leistung') | float(0)
+              %}{% set h = [ pv + n, 0 ] | max %}{{ (pv / 1000) | round(2) }} kW
+              PV · {{ (h / 1000) | round(2) }} kW Haus · {{ (n | abs / 1000) |
+              round(2) }} kW {{ 'Einspeisung' if n < 0 else 'Netzbezug' }}
+            icon: >-
+              {% set n = states('sensor.shellypro3em_38182bdee0e0_leistung') |
+              float(0) %}{{ 'mdi:transmission-tower-export' if n < -50 else
+              'mdi:transmission-tower-import' }}
+            icon_color: >-
+              {% set n = states('sensor.shellypro3em_38182bdee0e0_leistung') |
+              float(0) %}{{ 'green' if n < -50 else 'orange' }}
+            multiline_secondary: true
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 24px;
+                  --icon-size: 52px;
+                  --card-primary-font-size: 20px;
+                  --card-primary-font-weight: 700;
+                }
+          - type: gauge
+            grid_options:
+              columns: full
+            entity: sensor.stp10_0_3av_40_278_pv_power
+            name: PV-Leistung
+            min: 0
+            max: 10000
+            needle: true
+            severity:
+              green: 3000
+              yellow: 1000
+              red: 0
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Heute – seit 0 Uhr
+            heading_style: title
+            icon: mdi:calendar-today
+          - type: tile
+            grid_options:
+              columns: full
+            entity: sensor.stp10_0_3av_40_278_daily_yield
+            name: PV-Ertrag
+            icon: mdi:solar-power-variant
+            color: amber
+          - type: statistic
+            grid_options:
+              columns: full
+            entity: sensor.shellypro3em_38182bdee0e0_energie
+            name: Netzbezug
+            stat_type: change
+            period:
+              calendar:
+                period: day
+          - type: statistic
+            grid_options:
+              columns: full
+            entity: sensor.shellypro3em_38182bdee0e0_energieeinspeisung
+            name: Einspeisung
+            stat_type: change
+            period:
+              calendar:
+                period: day
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Zählerstände
+            heading_style: title
+            icon: mdi:counter
+          - type: markdown
+            grid_options:
+              columns: full
+            text_only: true
+            content: Laufende Gesamtzähler – sie werden nie zurückgesetzt.
+          - type: tile
+            grid_options:
+              columns: full
+            entity: sensor.stp10_0_3av_40_278_total_yield
+            name: PV erzeugt
+            icon: mdi:solar-power
+            color: green
+          - type: tile
+            grid_options:
+              columns: full
+            entity: sensor.shellypro3em_38182bdee0e0_energie
+            name: Netzbezug
+            icon: mdi:transmission-tower-import
+            color: orange
+          - type: tile
+            grid_options:
+              columns: full
+            entity: sensor.shellypro3em_38182bdee0e0_energieeinspeisung
+            name: Einspeisung
+            icon: mdi:transmission-tower-export
+            color: green
+      # WALLBOX:
+      # Eigene Home-Assistant-PV-Regelung. Der interne Tuya-Solar-Surplus-Modus
+      # muss AUS bleiben; input_boolean.wallbox_pv_automatik ist der einzige Regler.
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Wallbox
+            heading_style: title
+            icon: mdi:ev-station
+            badges:
+              - type: entity
+                entity: switch.garage_tuya_ev_charger_force_charge
+                name: Sofortladen
+                show_state: false
+                icon: mdi:flash
+                color: amber
+                tap_action:
+                  action: none
+                visibility:
+                  - condition: state
+                    entity: switch.garage_tuya_ev_charger_force_charge
+                    state: 'on'
+              - type: entity
+                entity: binary_sensor.wallbox_pv_ladung_aktiv
+                name: PV-Ladung
+                show_state: false
+                icon: mdi:solar-power
+                color: green
+                tap_action:
+                  action: none
+                visibility:
+                  - condition: state
+                    entity: binary_sensor.wallbox_pv_ladung_aktiv
+                    state: 'on'
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            primary: Wallbox meldet Alarm
+            secondary: >-
+              {%- set a = states('sensor.tuya_ev_charger_alarm') -%} {%- if
+              a.startswith('{') -%}Code {{ (a | from_json).get('v','?') }} · um
+              {{ (a | from_json).get('t','?') }} {%- elif
+              is_state('sensor.tuya_ev_charger_status','fault') -%}Status:
+              Störung {%- else -%}{{ a }}{%- endif -%}
+            icon: mdi:alert-circle
+            icon_color: red
+            multiline_secondary: true
+            tap_action:
+              action: more-info
+              entity: sensor.tuya_ev_charger_alarm
+            visibility:
+              - condition: state
+                entity: binary_sensor.wallbox_fehler
+                state: 'on'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  background: rgba(244, 67, 54, 0.16);
+                  border: 2px solid rgba(244, 67, 54, 0.6);
+                  --card-primary-font-weight: 700;
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            entity: sensor.tuya_ev_charger_status
+            primary: >-
+              {%- set s = states('sensor.tuya_ev_charger_status') -%} {%- set
+              laedt = is_state('binary_sensor.wallbox_ladung_aktiv','on') -%}
+              {%- set sofort =
+              is_state('switch.garage_tuya_ev_charger_force_charge','on') -%}
+              {%- if is_state('binary_sensor.wallbox_fehler','on') -%}Störung –
+              Wallbox prüfen {%- elif is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','on') -%}🔋 Auto voll / nimmt keine Ladung an
+              {%- elif laedt and sofort -%}⚡ Sofortladen läuft
+              {%- elif laedt and
+              is_state('binary_sensor.wallbox_pv_ladung_aktiv','on') -%}☀️ Lädt
+              mit Sonnenstrom {%- elif laedt -%}Auto lädt gerade {%- elif s ==
+              'charging' -%}Freigegeben – Auto nimmt keinen Strom {%- elif s ==
+              'charged' -%}Laden abgeschlossen {%- elif s == 'paused' -%}Laden
+              pausiert {%- elif s == 'waiting' -%}Wartet auf Ladefreigabe {%-
+              elif s == 'plugged_in' -%}Auto angeschlossen, lädt nicht {%- elif
+              s == 'idle' -%}Kein Auto angeschlossen {%- elif s in
+              ['unknown','unavailable'] -%}Wallbox nicht erreichbar {%- else
+              -%}Wallbox im Standby{%- endif -%}
+            secondary: >-
+              {%- set p = states('sensor.tuya_ev_charger_total_power') |
+              float(0) -%} {%- set a =
+              states('number.tuya_ev_charger_current_setpoint') | float(0) |
+              round(0) | int -%} {%- set e =
+              states('sensor.tuya_ev_charger_session_energy') | float(0) -%} {%-
+              set u = states('sensor.wallbox_pv_ueberschuss_fuer_auto') |
+              float(0) -%} {%- set st =
+              states('number.tuya_ev_charger_surplus_start_threshold') |
+              float(0) -%} {%- if is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','on') -%}
+              Kein weiterer PV-Start bis zum Abstecken · aktuell {{ (u / 1000) | round(1) }} kW verfügbar
+              {%- elif is_state('binary_sensor.wallbox_ladung_aktiv','on') -%} {{ p |
+              round(1) }} kW · {{ a }} A · {{ e | round(1) }} kWh in dieser
+              Ladung {%- elif
+              is_state('binary_sensor.wallbox_auto_angeschlossen','on') -%} {{ a
+              }} A eingestellt · {{ (u / 1000) | round(1) }} kW PV-Überschuss{{
+              ' – reicht für PV-Start' if st > 0 and u >= st else '' }} {%- else
+              -%} Eigene PV-Automatik {{ 'ein' if
+              is_state('input_boolean.wallbox_pv_automatik','on') else
+              'aus' }} · startet ab {{ (st / 1000) | round(1) }} kW Überschuss
+              {%- endif -%}
+            icon: >-
+              {%- set s = states('sensor.tuya_ev_charger_status') -%} {%- if
+              is_state('binary_sensor.wallbox_fehler','on') -%}mdi:alert-circle
+              {%- elif is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','on') -%}mdi:battery-check
+              {%- elif is_state('binary_sensor.wallbox_ladung_aktiv','on')
+              -%}mdi:battery-charging-high {%- elif s == 'charged'
+              -%}mdi:battery-check {%- elif
+              is_state('binary_sensor.wallbox_auto_angeschlossen','on')
+              -%}mdi:ev-plug-type2 {%- else -%}mdi:ev-station{%- endif -%}
+            icon_color: >-
+              {%- set s = states('sensor.tuya_ev_charger_status') -%} {%- if
+              is_state('binary_sensor.wallbox_fehler','on') -%}red {%- elif
+              is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','on') -%}green {%- elif
+              is_state('binary_sensor.wallbox_ladung_aktiv','on') -%}{{ 'amber'
+              if is_state('switch.garage_tuya_ev_charger_force_charge','on')
+              else 'green' }} {%- elif s == 'charged' -%}green {%- elif s ==
+              'paused' -%}orange {%- elif
+              is_state('binary_sensor.wallbox_auto_angeschlossen','on') -%}blue
+              {%- else -%}disabled{%- endif -%}
+            multiline_secondary: true
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 24px;
+                  --icon-size: 52px;
+                  --card-primary-font-size: 20px;
+                  --card-primary-font-weight: 700;
+                  transition: all 0.3s ease;
+                  {% if is_state('binary_sensor.wallbox_fehler','on') %}
+                  background: rgba(244, 67, 54, 0.16);
+                  border: 2px solid rgba(244, 67, 54, 0.6);
+                  {% elif is_state('binary_sensor.wallbox_ladung_aktiv','on') and is_state('switch.garage_tuya_ev_charger_force_charge','on') %}
+                  background: rgba(255, 193, 7, 0.16);
+                  border: 2px solid rgba(255, 193, 7, 0.6);
+                  {% elif is_state('binary_sensor.wallbox_ladung_aktiv','on') %}
+                  background: rgba(76, 175, 80, 0.14);
+                  border: 2px solid rgba(76, 175, 80, 0.5);
+                  {% else %}
+                  border: 2px solid transparent;
+                  {% endif %}
+                }
+          - type: grid
+            columns: 3
+            square: false
+            grid_options:
+              columns: full
+            cards:
+              - type: custom:mushroom-template-card
+                entity: sensor.wallbox_pv_ueberschuss_fuer_auto
+                icon: mdi:solar-power-variant
+                icon_color: >-
+                  {%- set u = states('sensor.wallbox_pv_ueberschuss_fuer_auto')
+                  | float(0) -%} {%- set st =
+                  states('number.tuya_ev_charger_surplus_start_threshold') |
+                  float(0) -%} {{ 'green' if st > 0 and u >= st else ('amber' if
+                  u > 0 else 'disabled') }}
+                primary: >-
+                  {%- set u = states('sensor.wallbox_pv_ueberschuss_fuer_auto')
+                  | float(0) -%} {% if u >= 1000 %}{{ (u / 1000) | round(1) }}
+                  kW{% else %}{{ u | round(0) | int }} W{% endif %}
+                secondary: PV fürs Auto
+                layout: vertical
+                tap_action:
+                  action: more-info
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 20px;
+                      --card-primary-font-size: 17px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 12px;
+                    }
+              - type: custom:mushroom-template-card
+                entity: sensor.tuya_ev_charger_total_power
+                icon: mdi:lightning-bolt
+                icon_color: >-
+                  {{ 'green' if
+                  is_state('binary_sensor.wallbox_ladung_aktiv','on') else
+                  'disabled' }}
+                primary: >-
+                  {{ states('sensor.tuya_ev_charger_total_power') | float(0) |
+                  round(1) }} kW
+                secondary: Ladeleistung
+                layout: vertical
+                tap_action:
+                  action: more-info
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 20px;
+                      --card-primary-font-size: 17px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 12px;
+                    }
+              - type: custom:mushroom-template-card
+                entity: sensor.tuya_ev_charger_session_energy
+                icon: mdi:battery-charging
+                icon_color: blue
+                primary: >-
+                  {{ states('sensor.tuya_ev_charger_session_energy') | float(0)
+                  | round(1) }} kWh
+                secondary: Diese Ladung
+                layout: vertical
+                tap_action:
+                  action: more-info
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 20px;
+                      --card-primary-font-size: 17px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 12px;
+                    }
+          # DIAGNOSEKARTE DER EIGENEN PV-REGELUNG:
+          # Zeigt Überschuss, /690-Zielstrom, tatsächlichen Sollstrom und kontrolliert,
+          # dass der interne Tuya-PV-Regler wirklich ausgeschaltet bleibt.
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: |
+                  ## 🔌 Wallbox PV-Regelung
+                  **Eigene Home-Assistant-Regelung · 3-phasig / 690**
+              - type: entities
+                entities:
+                  - entity: sensor.wallbox_pv_ueberschuss_fuer_auto
+                    name: Verfügbarer Überschuss fürs Auto
+                    icon: mdi:solar-power
+                  - entity: sensor.wallbox_pv_zielstrom_3_phasig
+                    name: Zielstrom eigene Regelung
+                    icon: mdi:current-ac
+                  - entity: number.tuya_ev_charger_current_setpoint
+                    name: Tatsächlicher Sollstrom
+                    icon: mdi:ev-station
+                  - entity: sensor.tuya_ev_charger_total_power
+                    name: Aktuelle Ladeleistung
+                    icon: mdi:flash
+                  - entity: input_boolean.wallbox_pv_automatik
+                    name: Eigene PV-Automatik
+                    icon: mdi:home-automation
+                  - entity: switch.tuya_ev_charger_solar_surplus_mode
+                    name: Interner Tuya-PV-Regler (muss AUS sein)
+                    icon: mdi:cog-off
+              - type: markdown
+                content: >
+                  {% set ziel =
+                  states('sensor.wallbox_pv_zielstrom_3_phasig') | int(0) %}
+                  {% set soll =
+                  states('number.tuya_ev_charger_current_setpoint') | int(0) %}
+                  {% set intern =
+                  is_state('switch.tuya_ev_charger_solar_surplus_mode','on') %}
+                  {% set eigen =
+                  is_state('input_boolean.wallbox_pv_automatik','on') %}
+                  {% set laedt =
+                  is_state('binary_sensor.wallbox_ladung_aktiv','on') %}
+
+                  {% if intern %}
+                  🚨 **Achtung: Der interne Tuya-PV-Regler ist AN. Es würden zwei
+                  Regelungen parallel arbeiten.**
+                  {% elif is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','on') %}
+                  🔋 **Auto voll / nimmt keine Ladung an. Weitere PV-Startversuche sind bis zum Abstecken gesperrt.**
+                  {% elif not eigen %}
+                  ⚪ **Eigene PV-Automatik ist ausgeschaltet.**
+                  {% elif laedt and soll == ziel %}
+                  ✅ **Regelung arbeitet korrekt: Sollstrom entspricht dem
+                  3-Phasen-Ziel.**
+                  {% elif laedt %}
+                  🟡 **Stromänderung läuft bzw. Verzögerungszeit ist noch aktiv.**
+                  {% else %}
+                  ✅ **Eigene PV-Regelung bereit – interner Tuya-Regler ist aus.**
+                  {% endif %}
+
+                  Ziel: **{{ ziel }} A** · Tatsächlich: **{{ soll }} A** ·
+                  Start **60 s** · Hoch **60 s** · Runter **30 s** · Stopp **120 s**
+          # AC-LADEKURVE + LOGBUCH
+          # Die Sensoren kommen aus wallbox_package_FINAL_mit_logbuch_und_ac_ladekurve.yaml
+          - type: heading
+            heading: AC-Ladekurve
+            heading_style: subtitle
+            icon: mdi:chart-line
+          - type: history-graph
+            title: Ladeleistung · PV · Netz (letzte 6 Stunden)
+            hours_to_show: 6
+            entities:
+              - entity: sensor.wallbox_ac_ladekurve_leistung
+                name: AC-Ladeleistung
+              - entity: sensor.wallbox_ac_ladekurve_pv_verfuegbar
+                name: PV für Auto verfügbar
+              - entity: sensor.wallbox_ac_ladekurve_netzfluss
+                name: Netzfluss (+ Bezug / − Einspeisung)
+          - type: history-graph
+            title: Zielstrom und gesetzter Strom (letzte 6 Stunden)
+            hours_to_show: 6
+            entities:
+              - entity: sensor.wallbox_ac_ladekurve_zielstrom
+                name: Zielstrom PV-Regelung
+              - entity: sensor.wallbox_ac_ladekurve_sollstrom
+                name: An Wallbox gesetzt
+          - type: entities
+            title: Letzte Regelentscheidung
+            entities:
+              - entity: input_text.wallbox_letzte_regelaktion
+                name: Aktion
+                icon: mdi:timeline-clock
+              - entity: input_text.wallbox_letzte_regelwerte
+                name: Messwerte
+                icon: mdi:clipboard-text-clock
+          - type: logbook
+            title: Wallbox-Regelungslog · letzte 6 Stunden
+            hours_to_show: 6
+            target:
+              entity_id:
+                - input_boolean.wallbox_pv_automatik
+                - input_boolean.wallbox_auto_nimmt_keine_ladung_an
+                - timer.wallbox_ladeannahme_test
+                - binary_sensor.wallbox_ladung_aktiv
+                - number.tuya_ev_charger_current_setpoint
+            name_detail: entity
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            icon: mdi:stop-circle
+            icon_color: red
+            primary: Laden stoppen
+            secondary: Tippen = stoppen · Gedrückt halten = stoppen + PV 2 Std. Pause
+            multiline_secondary: true
+            tap_action:
+              action: perform-action
+              perform_action: script.wallbox_stopp
+              data:
+                pv_pause_min: 0
+              confirmation:
+                text: >-
+                  Laufenden Ladevorgang wirklich stoppen? Die PV-Automatik darf
+                  danach wieder starten.
+            hold_action:
+              action: perform-action
+              perform_action: script.wallbox_stopp
+              data:
+                pv_pause_min: 120
+              confirmation:
+                text: Laden stoppen UND PV-Automatik für 2 Stunden pausieren?
+            visibility:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity: binary_sensor.wallbox_ladung_aktiv
+                    state: 'on'
+                  - condition: state
+                    entity: switch.garage_tuya_ev_charger_force_charge
+                    state: 'on'
+                  - condition: state
+                    entity: switch.tuya_ev_charger_charging_session
+                    state: 'on'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  background: rgba(244, 67, 54, 0.10);
+                  border: 2px solid rgba(244, 67, 54, 0.45);
+                  --icon-size: 48px;
+                  --card-primary-font-size: 18px;
+                  --card-primary-font-weight: 700;
+                }
+          - type: heading
+            heading: Sofort laden
+            heading_style: subtitle
+            icon: mdi:flash
+            visibility:
+              - condition: state
+                entity: binary_sensor.wallbox_auto_angeschlossen
+                state_not: 'off'
+          - type: markdown
+            grid_options:
+              columns: full
+            text_only: true
+            content: >-
+              **1.** Dauer wählen · **2.** Ladestrom antippen. Danach übernimmt
+              die PV-Automatik wieder.
+            visibility:
+              - condition: state
+                entity: binary_sensor.wallbox_auto_angeschlossen
+                state_not: 'off'
+          - type: grid
+            columns: 4
+            square: false
+            grid_options:
+              columns: full
+            visibility:
+              - condition: state
+                entity: binary_sensor.wallbox_auto_angeschlossen
+                state_not: 'off'
+            cards:
+              - type: custom:mushroom-template-card
+                primary: 1 Std.
+                icon: mdi:clock-time-one-outline
+                icon_color: >-
+                  {{ 'amber' if
+                  is_state('input_select.wallbox_sofortladen_dauer','1 Stunde')
+                  else 'disabled' }}
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: input_select.select_option
+                  target:
+                    entity_id: input_select.wallbox_sofortladen_dauer
+                  data:
+                    option: 1 Stunde
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                      {% if is_state('input_select.wallbox_sofortladen_dauer','1 Stunde') %}
+                      background: rgba(255, 193, 7, 0.16);
+                      border: 2px solid rgba(255, 193, 7, 0.7);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                primary: 3 Std.
+                icon: mdi:clock-time-three-outline
+                icon_color: >-
+                  {{ 'amber' if
+                  is_state('input_select.wallbox_sofortladen_dauer','3 Stunden')
+                  else 'disabled' }}
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: input_select.select_option
+                  target:
+                    entity_id: input_select.wallbox_sofortladen_dauer
+                  data:
+                    option: 3 Stunden
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                      {% if is_state('input_select.wallbox_sofortladen_dauer','3 Stunden') %}
+                      background: rgba(255, 193, 7, 0.16);
+                      border: 2px solid rgba(255, 193, 7, 0.7);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                primary: 6 Std.
+                icon: mdi:clock-time-six-outline
+                icon_color: >-
+                  {{ 'amber' if
+                  is_state('input_select.wallbox_sofortladen_dauer','6 Stunden')
+                  else 'disabled' }}
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: input_select.select_option
+                  target:
+                    entity_id: input_select.wallbox_sofortladen_dauer
+                  data:
+                    option: 6 Stunden
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                      {% if is_state('input_select.wallbox_sofortladen_dauer','6 Stunden') %}
+                      background: rgba(255, 193, 7, 0.16);
+                      border: 2px solid rgba(255, 193, 7, 0.7);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                primary: Bis voll
+                icon: mdi:battery-charging-100
+                icon_color: >-
+                  {{ 'amber' if
+                  is_state('input_select.wallbox_sofortladen_dauer','Bis voll')
+                  else 'disabled' }}
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: input_select.select_option
+                  target:
+                    entity_id: input_select.wallbox_sofortladen_dauer
+                  data:
+                    option: Bis voll
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                      {% if is_state('input_select.wallbox_sofortladen_dauer','Bis voll') %}
+                      background: rgba(255, 193, 7, 0.16);
+                      border: 2px solid rgba(255, 193, 7, 0.7);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+          - type: grid
+            columns: 5
+            square: false
+            grid_options:
+              columns: full
+            visibility:
+              - condition: state
+                entity: binary_sensor.wallbox_auto_angeschlossen
+                state_not: 'off'
+            cards:
+              - type: custom:mushroom-template-card
+                primary: 6 A
+                secondary: 4,1 kW
+                icon: mdi:flash-outline
+                icon_color: >-
+                  {{ 'amber' if
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  and states('number.tuya_ev_charger_current_setpoint') |
+                  float(0) | round(0) | int == 6 else 'blue' }}
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_sofortladen
+                  data:
+                    strom_a: 6
+                  confirmation:
+                    text: Jetzt mit 6 A (ca. 4,1 kW) laden? Dauer wie oben gewählt.
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 15px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 11px;
+                      {% if is_state('switch.garage_tuya_ev_charger_force_charge','on') and states('number.tuya_ev_charger_current_setpoint') | float(0) | round(0) | int == 6 %}
+                      background: rgba(255, 193, 7, 0.16);
+                      border: 2px solid rgba(255, 193, 7, 0.7);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                primary: 8 A
+                secondary: 5,5 kW
+                icon: mdi:flash-outline
+                icon_color: >-
+                  {{ 'amber' if
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  and states('number.tuya_ev_charger_current_setpoint') |
+                  float(0) | round(0) | int == 8 else 'blue' }}
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_sofortladen
+                  data:
+                    strom_a: 8
+                  confirmation:
+                    text: Jetzt mit 8 A (ca. 5,5 kW) laden? Dauer wie oben gewählt.
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 15px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 11px;
+                      {% if is_state('switch.garage_tuya_ev_charger_force_charge','on') and states('number.tuya_ev_charger_current_setpoint') | float(0) | round(0) | int == 8 %}
+                      background: rgba(255, 193, 7, 0.16);
+                      border: 2px solid rgba(255, 193, 7, 0.7);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                primary: 10 A
+                secondary: 6,9 kW
+                icon: mdi:flash
+                icon_color: >-
+                  {{ 'amber' if
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  and states('number.tuya_ev_charger_current_setpoint') |
+                  float(0) | round(0) | int == 10 else 'blue' }}
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_sofortladen
+                  data:
+                    strom_a: 10
+                  confirmation:
+                    text: Jetzt mit 10 A (ca. 6,9 kW) laden? Dauer wie oben gewählt.
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 15px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 11px;
+                      {% if is_state('switch.garage_tuya_ev_charger_force_charge','on') and states('number.tuya_ev_charger_current_setpoint') | float(0) | round(0) | int == 10 %}
+                      background: rgba(255, 193, 7, 0.16);
+                      border: 2px solid rgba(255, 193, 7, 0.7);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                primary: 13 A
+                secondary: 9,0 kW
+                icon: mdi:flash
+                icon_color: >-
+                  {{ 'amber' if
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  and states('number.tuya_ev_charger_current_setpoint') |
+                  float(0) | round(0) | int == 13 else 'blue' }}
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_sofortladen
+                  data:
+                    strom_a: 13
+                  confirmation:
+                    text: Jetzt mit 13 A (ca. 9 kW) laden? Dauer wie oben gewählt.
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 15px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 11px;
+                      {% if is_state('switch.garage_tuya_ev_charger_force_charge','on') and states('number.tuya_ev_charger_current_setpoint') | float(0) | round(0) | int == 13 %}
+                      background: rgba(255, 193, 7, 0.16);
+                      border: 2px solid rgba(255, 193, 7, 0.7);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                primary: 16 A
+                secondary: 11 kW
+                icon: mdi:lightning-bolt
+                icon_color: >-
+                  {{ 'amber' if
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  and states('number.tuya_ev_charger_current_setpoint') |
+                  float(0) | round(0) | int == 16 else 'blue' }}
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_sofortladen
+                  data:
+                    strom_a: 16
+                  confirmation:
+                    text: >-
+                      Jetzt mit 16 A (ca. 11 kW, volle Leistung) laden? Dauer
+                      wie oben gewählt.
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 15px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 11px;
+                      {% if is_state('switch.garage_tuya_ev_charger_force_charge','on') and states('number.tuya_ev_charger_current_setpoint') | float(0) | round(0) | int == 16 %}
+                      background: rgba(255, 193, 7, 0.16);
+                      border: 2px solid rgba(255, 193, 7, 0.7);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+          - type: heading
+            heading: PV-Automatik
+            heading_style: subtitle
+            icon: mdi:solar-power
+          - type: grid
+            columns: 2
+            square: false
+            grid_options:
+              columns: full
+            cards:
+              - type: custom:mushroom-template-card
+                entity: input_boolean.wallbox_pv_automatik
+                icon: mdi:solar-power
+                icon_color: >-
+                  {{ 'green' if
+                  is_state('input_boolean.wallbox_pv_automatik','on')
+                  else 'disabled' }}
+                primary: PV-Automatik
+                secondary: >-
+                  {%- if
+                  is_state('input_boolean.wallbox_pv_automatik','on')
+                  -%}Ein · ab {{
+                  (states('number.tuya_ev_charger_surplus_start_threshold') |
+                  float(0) / 1000) | round(1) }} kW {%- else -%}Aus – tippen zum
+                  Einschalten{%- endif -%}
+                multiline_secondary: true
+                tap_action:
+                  action: toggle
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 20px;
+                      --card-secondary-font-size: 12px;
+                      {% if is_state('input_boolean.wallbox_pv_automatik','on') %}
+                      background: rgba(76, 175, 80, 0.12);
+                      border: 2px solid rgba(76, 175, 80, 0.45);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                entity: sensor.wallbox_pv_entscheidung
+                icon: >-
+                  {%- if is_state('binary_sensor.wallbox_pv_ladung_aktiv','on')
+                  -%}mdi:weather-sunny {%- elif
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  -%}mdi:flash {%- elif
+                  is_state('binary_sensor.wallbox_pv_pausiert','on')
+                  -%}mdi:pause-circle {%- elif
+                  is_state('input_boolean.wallbox_pv_automatik','off')
+                  -%}mdi:solar-power-variant-outline {%- else
+                  -%}mdi:weather-partly-cloudy{%- endif -%}
+                icon_color: >-
+                  {%- if is_state('binary_sensor.wallbox_pv_ladung_aktiv','on')
+                  -%}green {%- elif
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  -%}amber {%- elif
+                  is_state('binary_sensor.wallbox_pv_pausiert','on') -%}orange
+                  {%- elif
+                  is_state('input_boolean.wallbox_pv_automatik','off')
+                  -%}disabled {%- else -%}blue{%- endif -%}
+                primary: >-
+                  {%- if is_state('binary_sensor.wallbox_pv_ladung_aktiv','on')
+                  -%}Lädt mit PV {%- elif
+                  is_state('switch.garage_tuya_ev_charger_force_charge','on')
+                  -%}Sofortladen hat Vorrang {%- elif
+                  is_state('binary_sensor.wallbox_pv_pausiert','on') -%}PV
+                  pausiert {%- elif
+                  is_state('input_boolean.wallbox_pv_automatik','off')
+                  -%}PV inaktiv {%- else -%}Wartet auf Sonne{%- endif -%}
+                secondary: >-
+                  {%- set u = states('sensor.wallbox_pv_ueberschuss_fuer_auto')
+                  | float(0) -%} {%- set st =
+                  states('number.tuya_ev_charger_surplus_start_threshold') |
+                  float(0) -%} {{ (u / 1000) | round(1) }} von {{ (st / 1000) |
+                  round(1) }} kW Überschuss
+                multiline_secondary: true
+                tap_action:
+                  action: more-info
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 20px;
+                      --card-secondary-font-size: 12px;
+                    }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            icon: mdi:play-circle
+            icon_color: orange
+            primary: PV-Pause aufheben
+            secondary: PV-Automatik darf sofort wieder regeln
+            tap_action:
+              action: perform-action
+              perform_action: timer.cancel
+              target:
+                entity_id: timer.wallbox_pv_pause
+            visibility:
+              - condition: state
+                entity: binary_sensor.wallbox_pv_pausiert
+                state: 'on'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  border: 2px solid rgba(255, 152, 0, 0.45);
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            entity: sensor.wallbox_pv_zielstrom_3_phasig
+            icon: mdi:state-machine
+            icon_color: >-
+              {%- if is_state('switch.tuya_ev_charger_solar_surplus_mode','on') -%}red
+              {%- elif is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','on') -%}green
+              {%- elif is_state('timer.wallbox_pv_pause','active') -%}orange
+              {%- elif is_state('binary_sensor.wallbox_pv_ladung_aktiv','on') -%}green
+              {%- elif is_state('input_boolean.wallbox_pv_automatik','on') -%}blue
+              {%- else -%}disabled{%- endif -%}
+            primary: Status der eigenen PV-Regelung
+            secondary: >-
+              {%- set u = states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) -%}
+              {%- set ziel = states('sensor.wallbox_pv_zielstrom_3_phasig') | int(0) -%}
+              {%- set soll = states('number.tuya_ev_charger_current_setpoint') | int(0) -%}
+              {%- if is_state('switch.tuya_ev_charger_solar_surplus_mode','on') -%}
+              Interner Tuya-Regler ist unerwartet AN
+              {%- elif is_state('timer.wallbox_pv_pause','active') -%}
+              PV-Regelung pausiert
+              {%- elif not is_state('input_boolean.wallbox_pv_automatik','on') -%}
+              Eigene PV-Automatik ist aus
+              {%- elif is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','on') -%}
+              Auto voll / nimmt keine Ladung an · wartet bis zum Abstecken
+              {%- elif is_state('switch.garage_tuya_ev_charger_force_charge','on') -%}
+              Sofortladen hat Vorrang
+              {%- elif is_state('binary_sensor.wallbox_ladung_aktiv','on') -%}
+              Lädt · Ziel {{ ziel }} A · gesetzt {{ soll }} A · {{ (u / 1000) | round(2) }} kW verfügbar
+              {%- elif is_state('binary_sensor.wallbox_auto_angeschlossen','on') -%}
+              Auto wartet · Ziel {{ ziel }} A · {{ (u / 1000) | round(2) }} kW verfügbar
+              {%- else -%}
+              Bereit · {{ (u / 1000) | round(2) }} kW verfügbar
+              {%- endif -%}
+            multiline_secondary: true
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card { border-radius: 20px; }
+          - type: heading
+            heading: PV-Schwellen
+            heading_style: subtitle
+            icon: mdi:tune-vertical
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            icon: mdi:information-outline
+            icon_color: blue
+            primary: >-
+              {%- set st =
+              states('number.tuya_ev_charger_surplus_start_threshold') |
+              float(0) -%} {%- set sp =
+              states('number.tuya_ev_charger_surplus_stop_threshold') | float(0)
+              -%} Start ab {{ (st / 1000) | round(2) }} kW · Stopp unter {{ (sp
+              / 1000) | round(2) }} kW
+            secondary: >-
+              {%- set st =
+              states('number.tuya_ev_charger_surplus_start_threshold') |
+              float(0) -%} {%- set sp =
+              states('number.tuya_ev_charger_surplus_stop_threshold') | float(0)
+              -%} Start nach 60 s stabil über der Startschwelle · Stopp nach
+              120 s auf/unter der Stoppschwelle. Hochregeln nach 60 s,
+              Runterregeln nach 30 s. {%- if st < 4140 %} Bei dieser
+              Startschwelle sind bis ca. {{ [0, 4140 - st] | max | round(0) | int }}
+              W Netzanteil beim Start mit 6 A bewusst möglich.{%- else %}
+              Ab der Startschwelle reichen bei 6 A rechnerisch PV-Leistung und
+              Überschuss vollständig aus.{%- endif %}
+            multiline_secondary: true
+            card_mod:
+              style: |
+                ha-card { border-radius: 20px; }
+          - type: grid
+            columns: 3
+            square: false
+            grid_options:
+              columns: full
+            cards:
+              - type: custom:mushroom-template-card
+                primary: −100 W
+                icon: mdi:minus
+                icon_color: grey
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_schwelle_anpassen
+                  data:
+                    schwelle: start
+                    delta_w: -100
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                    }
+              - type: custom:mushroom-template-card
+                entity: number.tuya_ev_charger_surplus_start_threshold
+                primary: >-
+                  {{ (states('number.tuya_ev_charger_surplus_start_threshold') |
+                  float(0) / 1000) | round(2) }} kW
+                secondary: Startschwelle
+                icon: mdi:ray-start-arrow
+                icon_color: green
+                layout: vertical
+                tap_action:
+                  action: more-info
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 18px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 12px;
+                    }
+              - type: custom:mushroom-template-card
+                primary: +100 W
+                icon: mdi:plus
+                icon_color: grey
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_schwelle_anpassen
+                  data:
+                    schwelle: start
+                    delta_w: 100
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                    }
+          - type: grid
+            columns: 3
+            square: false
+            grid_options:
+              columns: full
+            cards:
+              - type: custom:mushroom-template-card
+                primary: −100 W
+                icon: mdi:minus
+                icon_color: grey
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_schwelle_anpassen
+                  data:
+                    schwelle: stop
+                    delta_w: -100
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                    }
+              - type: custom:mushroom-template-card
+                entity: number.tuya_ev_charger_surplus_stop_threshold
+                primary: >-
+                  {{ (states('number.tuya_ev_charger_surplus_stop_threshold') |
+                  float(0) / 1000) | round(2) }} kW
+                secondary: Stoppschwelle
+                icon: mdi:ray-end-arrow
+                icon_color: red
+                layout: vertical
+                tap_action:
+                  action: more-info
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 18px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 12px;
+                    }
+              - type: custom:mushroom-template-card
+                primary: +100 W
+                icon: mdi:plus
+                icon_color: grey
+                layout: vertical
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_schwelle_anpassen
+                  data:
+                    schwelle: stop
+                    delta_w: 100
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                    }
+          - type: grid
+            columns: 3
+            square: false
+            grid_options:
+              columns: full
+            cards:
+              - type: custom:mushroom-template-card
+                primary: Sparsam
+                secondary: kaum Netzbezug
+                icon: mdi:leaf
+                icon_color: >-
+                  {{ 'green' if
+                  (states('number.tuya_ev_charger_surplus_start_threshold') |
+                  float(0) | int == 4500) and
+                  (states('number.tuya_ev_charger_surplus_stop_threshold') |
+                  float(0) | int == 4000) else 'disabled' }}
+                layout: vertical
+                multiline_secondary: true
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_schwellen_setzen
+                  data:
+                    start_w: 4500
+                    stop_w: 4000
+                  confirmation:
+                    text: 'Vorlage Sparsam: Start 4500 W, Stopp 4000 W übernehmen?'
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 11px;
+                      {% if (states('number.tuya_ev_charger_surplus_start_threshold') | float(0) | int == 4500) and (states('number.tuya_ev_charger_surplus_stop_threshold') | float(0) | int == 4000) %}
+                      background: rgba(76, 175, 80, 0.12);
+                      border: 2px solid rgba(76, 175, 80, 0.5);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                primary: Ausgewogen
+                secondary: bis ~0,5 kW Netz
+                icon: mdi:scale-balance
+                icon_color: >-
+                  {{ 'green' if
+                  (states('number.tuya_ev_charger_surplus_start_threshold') |
+                  float(0) | int == 4300) and
+                  (states('number.tuya_ev_charger_surplus_stop_threshold') |
+                  float(0) | int == 3600) else 'disabled' }}
+                layout: vertical
+                multiline_secondary: true
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_schwellen_setzen
+                  data:
+                    start_w: 4300
+                    stop_w: 3600
+                  confirmation:
+                    text: 'Vorlage Ausgewogen: Start 4300 W, Stopp 3600 W übernehmen?'
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 11px;
+                      {% if (states('number.tuya_ev_charger_surplus_start_threshold') | float(0) | int == 4300) and (states('number.tuya_ev_charger_surplus_stop_threshold') | float(0) | int == 3600) %}
+                      background: rgba(76, 175, 80, 0.12);
+                      border: 2px solid rgba(76, 175, 80, 0.5);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+              - type: custom:mushroom-template-card
+                primary: Mehr laden
+                secondary: bis ~1,1 kW Netz
+                icon: mdi:car-electric
+                icon_color: >-
+                  {{ 'green' if
+                  (states('number.tuya_ev_charger_surplus_start_threshold') |
+                  float(0) | int == 4200) and
+                  (states('number.tuya_ev_charger_surplus_stop_threshold') |
+                  float(0) | int == 3000) else 'disabled' }}
+                layout: vertical
+                multiline_secondary: true
+                tap_action:
+                  action: perform-action
+                  perform_action: script.wallbox_schwellen_setzen
+                  data:
+                    start_w: 4200
+                    stop_w: 3000
+                  confirmation:
+                    text: 'Vorlage Mehr laden: Start 4200 W, Stopp 3000 W übernehmen?'
+                card_mod:
+                  style: |
+                    ha-card {
+                      border-radius: 18px;
+                      --card-primary-font-size: 14px;
+                      --card-primary-font-weight: 700;
+                      --card-secondary-font-size: 11px;
+                      {% if (states('number.tuya_ev_charger_surplus_start_threshold') | float(0) | int == 4200) and (states('number.tuya_ev_charger_surplus_stop_threshold') | float(0) | int == 3000) %}
+                      background: rgba(76, 175, 80, 0.12);
+                      border: 2px solid rgba(76, 175, 80, 0.5);
+                      {% else %}
+                      border: 2px solid transparent;
+                      {% endif %}
+                    }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            entity: sensor.wallbox_pv_zielstrom_3_phasig
+            icon: mdi:timer-cog-outline
+            icon_color: blue
+            primary: Ruhige PV-Regelung
+            secondary: >-
+              Start 60 s · Hochregeln 60 s · Runterregeln 30 s · Stopp 120 s.
+              Ladeannahme-Test 90 s (<300 W = bis zum Abstecken gesperrt). Regelbereich: 6–16 A in 1-A-Schritten.
+            multiline_secondary: true
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card { border-radius: 20px; }
+          - type: heading
+            heading: Technik
+            heading_style: subtitle
+            icon: mdi:cog-outline
+          - type: grid
+            columns: 2
+            square: false
+            grid_options:
+              columns: full
+            cards:
+              - type: tile
+                entity: input_boolean.wallbox_pv_automatik
+                name: Eigene PV-Automatik
+                icon: mdi:home-automation
+              - type: tile
+                entity: switch.tuya_ev_charger_solar_surplus_mode
+                name: Interner Tuya-PV-Regler (muss AUS)
+                icon: mdi:cog-off
+              - type: tile
+                entity: timer.wallbox_pv_pause
+                name: PV-Pause
+                icon: mdi:pause-circle-outline
+              - type: tile
+                entity: input_boolean.wallbox_auto_nimmt_keine_ladung_an
+                name: Auto voll / keine Ladeannahme
+                icon: mdi:battery-check
+              - type: tile
+                entity: timer.wallbox_ladeannahme_test
+                name: Ladeannahme-Test
+                icon: mdi:car-clock
+              - type: tile
+                entity: sensor.wallbox_pv_zielstrom_3_phasig
+                name: Zielstrom /690
+                icon: mdi:current-ac
+              - type: tile
+                entity: sensor.garage_tuya_ev_charger_byd_atto_3_evo_excellence_energy
+                name: BYD geladen gesamt
+                icon: mdi:car-electric
+                color: green
+              - type: tile
+                entity: sensor.tuya_ev_charger_temperature
+                name: Wallbox-Temperatur
+                icon: mdi:thermometer
+              - type: tile
+                entity: sensor.tuya_ev_charger_connection_health
+                name: Verbindung
+                icon: mdi:lan-connect
+              - type: conditional
+                conditions:
+                  - condition: state
+                    entity: sensor.tuya_ev_charger_last_session_cost
+                    state_not: unavailable
+                card:
+                  type: tile
+                  entity: sensor.tuya_ev_charger_last_session_cost
+                  name: Letzte Ladung Kosten
+                  icon: mdi:currency-eur
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Verlauf der letzten 24 Stunden
+            heading_style: title
+            icon: mdi:chart-line
+          - type: history-graph
+            hours_to_show: 24
+            entities:
+              - entity: sensor.stp10_0_3av_40_278_pv_power
+                name: PV erzeugt
+              - entity: sensor.shellypro3em_38182bdee0e0_leistung
+                name: Netz (+ Kauf / − Einspeisung)
+              - entity: sensor.tuya_ev_charger_total_power
+                name: Wallbox
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Technische Details
+            heading_style: title
+            icon: mdi:cog-outline
+          - type: entities
+            entities:
+              - entity: sensor.stp10_0_3av_40_278_status
+                name: Wechselrichter-Status
+              - entity: sensor.stp10_0_3av_40_278_pv_power_a
+                name: String A Leistung
+              - entity: sensor.stp10_0_3av_40_278_pv_power_b
+                name: String B Leistung
+              - entity: sensor.stp10_0_3av_40_278_pv_current_a
+                name: String A Strom
+              - entity: sensor.stp10_0_3av_40_278_pv_current_b
+                name: String B Strom
+              - entity: sensor.stp10_0_3av_40_278_current_total
+                name: Strom gesamt
+              - entity: sensor.stp10_0_3av_40_278_grid_power
+                name: Netzleistung (SMA)
+              - entity: sensor.stp10_0_3av_40_278_inverter_power_limit
+                name: Leistungsbegrenzung
+              - entity: sensor.shellypro3em_38182bdee0e0_phase_a_leistung
+                name: Phase A
+              - entity: sensor.shellypro3em_38182bdee0e0_phase_b_leistung
+                name: Phase B
+              - entity: sensor.shellypro3em_38182bdee0e0_phase_c_leistung
+                name: Phase C
+              - entity: sensor.shellypro3em_38182bdee0e0_temperatur
+                name: Shelly Temperatur
+  - title: Sicherheit
+    path: sicherheit
+    icon: mdi:shield-home
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:mushroom-template-card
+            primary: >-
+              {% set rm =
+              expand('binary_sensor.eg_flur_haustur_rauch','binary_sensor.eg_flur_treppe_rauch','binary_sensor.eleano_rauch','binary_sensor.mattia_rauch','binary_sensor.og_flur_rauch')
+              %}{% set alarm = rm | selectattr('state','eq','on') | list %}{%
+              set weg = rm | rejectattr('state','in',['on','off']) | list %}{%
+              if alarm | count > 0 %}Rauch erkannt{% elif weg | count > 0 %}{{
+              weg | count }} Melder nicht erreichbar{% else %}Alles sicher{%
+              endif %}
+            secondary: >-
+              {% set rm =
+              expand('binary_sensor.eg_flur_haustur_rauch','binary_sensor.eg_flur_treppe_rauch','binary_sensor.eleano_rauch','binary_sensor.mattia_rauch','binary_sensor.og_flur_rauch')
+              %}{% set alarm = rm | selectattr('state','eq','on') | list %}{% if
+              alarm | count > 0 %}{{ alarm | map(attribute='name') | join(', ')
+              }}{% else %}{{ rm | selectattr('state','eq','off') | list | count
+              }} von 5 Rauchmeldern melden Normalbetrieb{% endif %}
+            icon: mdi:shield-check
+            icon_color: >-
+              {% set rm =
+              expand('binary_sensor.eg_flur_haustur_rauch','binary_sensor.eg_flur_treppe_rauch','binary_sensor.eleano_rauch','binary_sensor.mattia_rauch','binary_sensor.og_flur_rauch')
+              %}{% if rm | selectattr('state','eq','on') | list | count > 0
+              %}red{% elif rm | rejectattr('state','in',['on','off']) | list |
+              count > 0 %}orange{% else %}green{% endif %}
+            multiline_secondary: true
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 24px;
+                  --icon-size: 52px;
+                  --card-primary-font-size: 22px;
+                  --card-primary-font-weight: 700;
+                }
+          - type: heading
+            heading: Rauchmelder
+            heading_style: title
+            icon: mdi:smoke-detector-variant
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: binary_sensor.eg_flur_haustur_rauch
+            primary: EG Flur Haustür
+            secondary: >-
+              {% if states('binary_sensor.eg_flur_haustur_rauch') not in
+              ['on','off'] %}Nicht erreichbar{% else %}Batterie {{
+              states('sensor.eg_flur_haustur_batteriestatus') }}{{
+              state_attr('sensor.eg_flur_haustur_batteriestatus','unit_of_measurement')
+              or '' }}{% endif %}
+            icon: mdi:smoke-detector-variant
+            icon_color: >-
+              {% set s = states('binary_sensor.eg_flur_haustur_rauch') %}{% if s
+              == 'on' %}red{% elif s != 'off' %}orange{% else %}green{% endif %}
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: binary_sensor.eg_flur_treppe_rauch
+            primary: EG Flur Treppe
+            secondary: >-
+              {% if states('binary_sensor.eg_flur_treppe_rauch') not in
+              ['on','off'] %}Nicht erreichbar{% else %}Batterie {{
+              states('sensor.eg_flur_treppe_batteriestatus') }}{{
+              state_attr('sensor.eg_flur_treppe_batteriestatus','unit_of_measurement')
+              or '' }}{% endif %}
+            icon: mdi:smoke-detector-variant
+            icon_color: >-
+              {% set s = states('binary_sensor.eg_flur_treppe_rauch') %}{% if s
+              == 'on' %}red{% elif s != 'off' %}orange{% else %}green{% endif %}
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: binary_sensor.og_flur_rauch
+            primary: OG Flur
+            secondary: >-
+              {% if states('binary_sensor.og_flur_rauch') not in ['on','off']
+              %}Nicht erreichbar{% else %}Batterie {{
+              states('sensor.og_flur_batteriestatus') }}{{
+              state_attr('sensor.og_flur_batteriestatus','unit_of_measurement')
+              or '' }}{% endif %}
+            icon: mdi:smoke-detector-variant
+            icon_color: >-
+              {% set s = states('binary_sensor.og_flur_rauch') %}{% if s == 'on'
+              %}red{% elif s != 'off' %}orange{% else %}green{% endif %}
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: binary_sensor.eleano_rauch
+            primary: Eleano
+            secondary: >-
+              {% if states('binary_sensor.eleano_rauch') not in ['on','off']
+              %}Nicht erreichbar{% else %}Batterie {{
+              states('sensor.eleano_batteriestatus') }}{{
+              state_attr('sensor.eleano_batteriestatus','unit_of_measurement')
+              or '' }}{% endif %}
+            icon: mdi:smoke-detector-variant
+            icon_color: >-
+              {% set s = states('binary_sensor.eleano_rauch') %}{% if s == 'on'
+              %}red{% elif s != 'off' %}orange{% else %}green{% endif %}
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: binary_sensor.mattia_rauch
+            primary: Mattia
+            secondary: >-
+              {% if states('binary_sensor.mattia_rauch') not in ['on','off']
+              %}Nicht erreichbar{% else %}Batterie {{
+              states('sensor.mattia_batteriestatus') }}{{
+              state_attr('sensor.mattia_batteriestatus','unit_of_measurement')
+              or '' }}{% endif %}
+            icon: mdi:smoke-detector-variant
+            icon_color: >-
+              {% set s = states('binary_sensor.mattia_rauch') %}{% if s == 'on'
+              %}red{% elif s != 'off' %}orange{% else %}green{% endif %}
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Bewegung außen
+            heading_style: title
+            icon: mdi:motion-sensor
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: entity
+                entity: binary_sensor.vorne_rechts_person
+                name: Vorne rechts
+                icon: mdi:account
+              - type: entity
+                entity: binary_sensor.vorne_links_person
+                name: Vorne links
+                icon: mdi:account
+              - type: entity
+                entity: binary_sensor.hinterm_haus_duo_person
+                name: Hinterm Haus
+                icon: mdi:account
+              - type: entity
+                entity: binary_sensor.west_person
+                name: West
+                icon: mdi:account
+              - type: entity
+                entity: binary_sensor.vorne_rechts_fahrzeug
+                name: Fahrzeug
+                icon: mdi:car
+              - type: entity
+                entity: binary_sensor.vorne_links_fahrzeug
+                name: Fahrzeug
+                icon: mdi:car
+          - type: heading
+            heading: Außenbeleuchtung
+            heading_style: title
+            icon: mdi:spotlight-beam
+          - type: custom:bubble-card
+            card_type: button
+            button_type: switch
+            entity: light.vorne_links_flutlicht
+            name: Vorne links
+            icon: mdi:spotlight-beam
+          - type: custom:bubble-card
+            card_type: button
+            button_type: switch
+            entity: light.hinterm_haus_duo_flutlicht
+            name: Hinterm Haus
+            icon: mdi:spotlight-beam
+          - type: custom:bubble-card
+            card_type: button
+            button_type: switch
+            entity: light.west_flutlicht
+            name: West
+            icon: mdi:spotlight-beam
+      - type: grid
+        column_span: 3
+        cards:
+          - type: custom:bubble-card
+            card_type: button
+            button_type: name
+            name: Sirenen (nur im Notfall)
+            icon: mdi:bullhorn
+            tap_action:
+              action: navigate
+              navigation_path: '#sirenen'
+            card_mod:
+              style: |
+                ha-card { border-radius: 20px; }
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#sirenen'
+            name: Sirenen
+            icon: mdi:bullhorn
+            cards:
+              - type: markdown
+                content: >
+                  **Achtung:** Die Sirenen sind sehr laut. Zum Auslösen die
+                  jeweilige Schaltfläche **gedrückt halten** und anschließend
+                  bestätigen.
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                name: Alle Sirenen AUS
+                icon: mdi:volume-off
+                tap_action:
+                  action: perform-action
+                  perform_action: siren.turn_off
+                  target:
+                    entity_id:
+                      - siren.vorne_links_sirene
+                      - siren.hinterm_haus_duo_sirene
+                      - siren.west_sirene
+                      - siren.haustuer_innen_sirene
+                      - siren.eleano_sirene
+                      - siren.tuerklingel_sirene
+                      - siren.tuerklingel_sirene_2
+              - type: heading
+                heading: Einzeln auslösen
+                heading_style: title
+                icon: mdi:gesture-tap-hold
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                entity: siren.vorne_links_sirene
+                name: Vorne links
+                icon: mdi:bullhorn-outline
+                tap_action:
+                  action: none
+                hold_action:
+                  action: perform-action
+                  perform_action: siren.turn_on
+                  target:
+                    entity_id: siren.vorne_links_sirene
+                  confirmation:
+                    text: Sirene "Vorne links" wirklich auslösen?
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                entity: siren.hinterm_haus_duo_sirene
+                name: Hinterm Haus
+                icon: mdi:bullhorn-outline
+                tap_action:
+                  action: none
+                hold_action:
+                  action: perform-action
+                  perform_action: siren.turn_on
+                  target:
+                    entity_id: siren.hinterm_haus_duo_sirene
+                  confirmation:
+                    text: Sirene "Hinterm Haus" wirklich auslösen?
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                entity: siren.west_sirene
+                name: West
+                icon: mdi:bullhorn-outline
+                tap_action:
+                  action: none
+                hold_action:
+                  action: perform-action
+                  perform_action: siren.turn_on
+                  target:
+                    entity_id: siren.west_sirene
+                  confirmation:
+                    text: Sirene "West" wirklich auslösen?
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                entity: siren.haustuer_innen_sirene
+                name: Haustür innen
+                icon: mdi:bullhorn-outline
+                tap_action:
+                  action: none
+                hold_action:
+                  action: perform-action
+                  perform_action: siren.turn_on
+                  target:
+                    entity_id: siren.haustuer_innen_sirene
+                  confirmation:
+                    text: Sirene "Haustür innen" wirklich auslösen?
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                entity: siren.eleano_sirene
+                name: Eleano
+                icon: mdi:bullhorn-outline
+                tap_action:
+                  action: none
+                hold_action:
+                  action: perform-action
+                  perform_action: siren.turn_on
+                  target:
+                    entity_id: siren.eleano_sirene
+                  confirmation:
+                    text: Sirene "Eleano" wirklich auslösen?
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                entity: siren.tuerklingel_sirene
+                name: Türklingel
+                icon: mdi:bullhorn-outline
+                tap_action:
+                  action: none
+                hold_action:
+                  action: perform-action
+                  perform_action: siren.turn_on
+                  target:
+                    entity_id: siren.tuerklingel_sirene
+                  confirmation:
+                    text: Sirene "Türklingel" wirklich auslösen?
+  - title: Kameras
+    path: kameras
+    icon: mdi:cctv
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Außenkameras
+            heading_style: title
+            icon: mdi:cctv
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            entity: input_boolean.kamera_livebilder
+            primary: >-
+              {{ 'Livebilder ausblenden' if
+              is_state('input_boolean.kamera_livebilder','on') else 'Livebilder
+              einblenden' }}
+            secondary: >-
+              {% if is_state('input_boolean.kamera_livebilder','on') %}Schalten
+              sich nach 10 Minuten von selbst ab{% else %}Streams laufen erst,
+              wenn du sie einschaltest{% endif %}
+            icon: >-
+              {{ 'mdi:video-off-outline' if
+              is_state('input_boolean.kamera_livebilder','on') else
+              'mdi:video-outline' }}
+            icon_color: >-
+              {{ 'blue' if is_state('input_boolean.kamera_livebilder','on') else
+              'disabled' }}
+            tap_action:
+              action: toggle
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  {% if is_state('input_boolean.kamera_livebilder','on') %}
+                  background: rgba(33, 150, 243, 0.14);
+                  border: 2px solid rgba(33, 150, 243, 0.5);
+                  {% else %}
+                  border: 2px solid transparent;
+                  {% endif %}
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: full
+            primary: Erkennung aktiv
+            secondary: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.tuerklingel_besucher','Türklingel:
+              Klingelt'),('binary_sensor.tuerklingel_person','Türklingel:
+              Person'),('binary_sensor.vorne_rechts_person','Vorne rechts:
+              Person'),('binary_sensor.vorne_rechts_fahrzeug','Vorne rechts:
+              Fahrzeug'),('binary_sensor.vorne_links_person','Vorne links:
+              Person'),('binary_sensor.vorne_links_fahrzeug','Vorne links:
+              Fahrzeug'),('binary_sensor.vorne_links_haustier','Vorne links:
+              Tier'),('binary_sensor.hinterm_haus_duo_person','Hinterm Haus:
+              Person'),('binary_sensor.hinterm_haus_duo_fahrzeug','Hinterm Haus:
+              Fahrzeug'),('binary_sensor.hinterm_haus_duo_haustier','Hinterm
+              Haus: Tier'),('binary_sensor.west_person','West:
+              Person'),('binary_sensor.west_fahrzeug','West:
+              Fahrzeug'),('binary_sensor.west_haustier','West: Tier')] %}{% if
+              is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif %}{% endfor
+              %}{{ ns.l | join(' · ') }}
+            icon: mdi:alert-circle
+            icon_color: red
+            multiline_secondary: true
+            visibility:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity: binary_sensor.tuerklingel_besucher
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.tuerklingel_person
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.vorne_rechts_person
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.vorne_rechts_fahrzeug
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.vorne_links_person
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.vorne_links_fahrzeug
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.vorne_links_haustier
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.hinterm_haus_duo_person
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.hinterm_haus_duo_fahrzeug
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.hinterm_haus_duo_haustier
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.west_person
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.west_fahrzeug
+                    state: 'on'
+                  - condition: state
+                    entity: binary_sensor.west_haustier
+                    state: 'on'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  background: rgba(244, 67, 54, 0.18);
+                  border: 2px solid rgba(244, 67, 54, 0.75);
+                  --card-primary-font-weight: 700;
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: camera.tuerklingel_standardauflosung
+            primary: Türklingel
+            secondary: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.tuerklingel_besucher','Klingelt'),('binary_sensor.tuerklingel_person','Person'),('binary_sensor.tuerklingel_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}{{ ns.l | join(' · ') }}{%
+              else %}Ruhig{% endif %}
+            icon: >-
+              {% if is_state('binary_sensor.tuerklingel_besucher','on')
+              %}mdi:account-alert{% elif
+              is_state('binary_sensor.tuerklingel_bewegung','on')
+              %}mdi:motion-sensor{% else %}mdi:cctv{% endif %}
+            icon_color: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.tuerklingel_besucher','Klingelt'),('binary_sensor.tuerklingel_person','Person'),('binary_sensor.tuerklingel_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if
+              is_state('binary_sensor.tuerklingel_besucher','on') %}red{% elif
+              ns.l | count > 0 %}orange{% else %}disabled{% endif %}
+            badge_icon: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.tuerklingel_besucher','Klingelt'),('binary_sensor.tuerklingel_person','Person'),('binary_sensor.tuerklingel_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}mdi:alert-circle{% endif %}
+            badge_color: >-
+              {{ 'red' if is_state('binary_sensor.tuerklingel_besucher','on')
+              else 'orange' }}
+            tap_action:
+              action: navigate
+              navigation_path: '#cam-tuerklingel'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  transition: all 0.3s ease;
+                  {% if is_state('binary_sensor.tuerklingel_besucher','on') %}
+                  background: rgba(244, 67, 54, 0.18);
+                  border: 2px solid rgba(244, 67, 54, 0.75);
+                  box-shadow: 0 0 14px rgba(244, 67, 54, 0.35);
+                  {% elif is_state('binary_sensor.tuerklingel_bewegung','on') %}
+                  background: rgba(255, 152, 0, 0.15);
+                  border: 2px solid rgba(255, 152, 0, 0.6);
+                  {% else %}
+                  border: 2px solid transparent;
+                  {% endif %}
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: camera.vorne_rechts_standardauflosung
+            primary: Vorne rechts
+            secondary: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.vorne_rechts_person','Person'),('binary_sensor.vorne_rechts_fahrzeug','Fahrzeug'),('binary_sensor.vorne_rechts_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}{{ ns.l | join(' · ') }}{%
+              else %}Ruhig{% endif %}
+            icon: >-
+              {% if is_state('binary_sensor.vorne_rechts_person','on')
+              %}mdi:account-alert{% elif
+              is_state('binary_sensor.vorne_rechts_bewegung','on')
+              %}mdi:motion-sensor{% else %}mdi:cctv{% endif %}
+            icon_color: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.vorne_rechts_person','Person'),('binary_sensor.vorne_rechts_fahrzeug','Fahrzeug'),('binary_sensor.vorne_rechts_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if
+              is_state('binary_sensor.vorne_rechts_person','on') %}red{% elif
+              ns.l | count > 0 %}orange{% else %}disabled{% endif %}
+            badge_icon: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.vorne_rechts_person','Person'),('binary_sensor.vorne_rechts_fahrzeug','Fahrzeug'),('binary_sensor.vorne_rechts_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}mdi:alert-circle{% endif %}
+            badge_color: >-
+              {{ 'red' if is_state('binary_sensor.vorne_rechts_person','on')
+              else 'orange' }}
+            tap_action:
+              action: navigate
+              navigation_path: '#cam-vorne-rechts'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  transition: all 0.3s ease;
+                  {% if is_state('binary_sensor.vorne_rechts_person','on') %}
+                  background: rgba(244, 67, 54, 0.18);
+                  border: 2px solid rgba(244, 67, 54, 0.75);
+                  box-shadow: 0 0 14px rgba(244, 67, 54, 0.35);
+                  {% elif is_state('binary_sensor.vorne_rechts_bewegung','on') %}
+                  background: rgba(255, 152, 0, 0.15);
+                  border: 2px solid rgba(255, 152, 0, 0.6);
+                  {% else %}
+                  border: 2px solid transparent;
+                  {% endif %}
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: camera.vorne_links_standardauflosung
+            primary: Vorne links
+            secondary: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.vorne_links_person','Person'),('binary_sensor.vorne_links_fahrzeug','Fahrzeug'),('binary_sensor.vorne_links_haustier','Tier'),('binary_sensor.vorne_links_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}{{ ns.l | join(' · ') }}{%
+              else %}Ruhig{% endif %}
+            icon: >-
+              {% if is_state('binary_sensor.vorne_links_person','on')
+              %}mdi:account-alert{% elif
+              is_state('binary_sensor.vorne_links_bewegung','on')
+              %}mdi:motion-sensor{% else %}mdi:cctv{% endif %}
+            icon_color: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.vorne_links_person','Person'),('binary_sensor.vorne_links_fahrzeug','Fahrzeug'),('binary_sensor.vorne_links_haustier','Tier'),('binary_sensor.vorne_links_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if
+              is_state('binary_sensor.vorne_links_person','on') %}red{% elif
+              ns.l | count > 0 %}orange{% else %}disabled{% endif %}
+            badge_icon: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.vorne_links_person','Person'),('binary_sensor.vorne_links_fahrzeug','Fahrzeug'),('binary_sensor.vorne_links_haustier','Tier'),('binary_sensor.vorne_links_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}mdi:alert-circle{% endif %}
+            badge_color: >-
+              {{ 'red' if is_state('binary_sensor.vorne_links_person','on') else
+              'orange' }}
+            tap_action:
+              action: navigate
+              navigation_path: '#cam-vorne-links'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  transition: all 0.3s ease;
+                  {% if is_state('binary_sensor.vorne_links_person','on') %}
+                  background: rgba(244, 67, 54, 0.18);
+                  border: 2px solid rgba(244, 67, 54, 0.75);
+                  box-shadow: 0 0 14px rgba(244, 67, 54, 0.35);
+                  {% elif is_state('binary_sensor.vorne_links_bewegung','on') %}
+                  background: rgba(255, 152, 0, 0.15);
+                  border: 2px solid rgba(255, 152, 0, 0.6);
+                  {% else %}
+                  border: 2px solid transparent;
+                  {% endif %}
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: camera.hinterm_haus_duo_standardauflosung
+            primary: Hinterm Haus
+            secondary: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.hinterm_haus_duo_person','Person'),('binary_sensor.hinterm_haus_duo_fahrzeug','Fahrzeug'),('binary_sensor.hinterm_haus_duo_haustier','Tier'),('binary_sensor.hinterm_haus_duo_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}{{ ns.l | join(' · ') }}{%
+              else %}Ruhig{% endif %}
+            icon: >-
+              {% if is_state('binary_sensor.hinterm_haus_duo_person','on')
+              %}mdi:account-alert{% elif
+              is_state('binary_sensor.hinterm_haus_duo_bewegung','on')
+              %}mdi:motion-sensor{% else %}mdi:cctv{% endif %}
+            icon_color: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.hinterm_haus_duo_person','Person'),('binary_sensor.hinterm_haus_duo_fahrzeug','Fahrzeug'),('binary_sensor.hinterm_haus_duo_haustier','Tier'),('binary_sensor.hinterm_haus_duo_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if
+              is_state('binary_sensor.hinterm_haus_duo_person','on') %}red{%
+              elif ns.l | count > 0 %}orange{% else %}disabled{% endif %}
+            badge_icon: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.hinterm_haus_duo_person','Person'),('binary_sensor.hinterm_haus_duo_fahrzeug','Fahrzeug'),('binary_sensor.hinterm_haus_duo_haustier','Tier'),('binary_sensor.hinterm_haus_duo_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}mdi:alert-circle{% endif %}
+            badge_color: >-
+              {{ 'red' if is_state('binary_sensor.hinterm_haus_duo_person','on')
+              else 'orange' }}
+            tap_action:
+              action: navigate
+              navigation_path: '#cam-hinterm-haus'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  transition: all 0.3s ease;
+                  {% if is_state('binary_sensor.hinterm_haus_duo_person','on') %}
+                  background: rgba(244, 67, 54, 0.18);
+                  border: 2px solid rgba(244, 67, 54, 0.75);
+                  box-shadow: 0 0 14px rgba(244, 67, 54, 0.35);
+                  {% elif is_state('binary_sensor.hinterm_haus_duo_bewegung','on') %}
+                  background: rgba(255, 152, 0, 0.15);
+                  border: 2px solid rgba(255, 152, 0, 0.6);
+                  {% else %}
+                  border: 2px solid transparent;
+                  {% endif %}
+                }
+          - type: custom:mushroom-template-card
+            grid_options:
+              columns: 6
+            entity: camera.west_standardauflosung
+            primary: West
+            secondary: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.west_person','Person'),('binary_sensor.west_fahrzeug','Fahrzeug'),('binary_sensor.west_haustier','Tier'),('binary_sensor.west_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}{{ ns.l | join(' · ') }}{%
+              else %}Ruhig{% endif %}
+            icon: >-
+              {% if is_state('binary_sensor.west_person','on')
+              %}mdi:account-alert{% elif
+              is_state('binary_sensor.west_bewegung','on') %}mdi:motion-sensor{%
+              else %}mdi:cctv{% endif %}
+            icon_color: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.west_person','Person'),('binary_sensor.west_fahrzeug','Fahrzeug'),('binary_sensor.west_haustier','Tier'),('binary_sensor.west_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if is_state('binary_sensor.west_person','on')
+              %}red{% elif ns.l | count > 0 %}orange{% else %}disabled{% endif
+              %}
+            badge_icon: >-
+              {% set ns = namespace(l=[]) %}{% for e, n in
+              [('binary_sensor.west_person','Person'),('binary_sensor.west_fahrzeug','Fahrzeug'),('binary_sensor.west_haustier','Tier'),('binary_sensor.west_bewegung','Bewegung')]
+              %}{% if is_state(e,'on') %}{% set ns.l = ns.l + [n] %}{% endif
+              %}{% endfor %}{% if ns.l | count > 0 %}mdi:alert-circle{% endif %}
+            badge_color: >-
+              {{ 'red' if is_state('binary_sensor.west_person','on') else
+              'orange' }}
+            tap_action:
+              action: navigate
+              navigation_path: '#cam-west'
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  transition: all 0.3s ease;
+                  {% if is_state('binary_sensor.west_person','on') %}
+                  background: rgba(244, 67, 54, 0.18);
+                  border: 2px solid rgba(244, 67, 54, 0.75);
+                  box-shadow: 0 0 14px rgba(244, 67, 54, 0.35);
+                  {% elif is_state('binary_sensor.west_bewegung','on') %}
+                  background: rgba(255, 152, 0, 0.15);
+                  border: 2px solid rgba(255, 152, 0, 0.6);
+                  {% else %}
+                  border: 2px solid transparent;
+                  {% endif %}
+                }
+      - type: grid
+        column_span: 3
+        visibility:
+          - condition: state
+            entity: input_boolean.kamera_livebilder
+            state: 'on'
+        cards:
+          - type: heading
+            heading: Livebilder
+            heading_style: title
+            icon: mdi:video
+          - type: picture-entity
+            grid_options:
+              columns: 6
+            entity: camera.tuerklingel_fliessend
+            camera_view: live
+            aspect_ratio: '16:9'
+            name: Türklingel
+            show_state: false
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  overflow: hidden;
+                  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+                }
+          - type: picture-entity
+            grid_options:
+              columns: 6
+            entity: camera.vorne_rechts_standardauflosung
+            camera_view: live
+            aspect_ratio: '16:9'
+            name: Vorne rechts
+            show_state: false
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  overflow: hidden;
+                  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+                }
+          - type: picture-entity
+            grid_options:
+              columns: 6
+            entity: camera.vorne_links_standardauflosung
+            camera_view: live
+            aspect_ratio: '16:9'
+            name: Vorne links
+            show_state: false
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  overflow: hidden;
+                  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+                }
+          - type: picture-entity
+            grid_options:
+              columns: 6
+            entity: camera.hinterm_haus_duo_standardauflosung
+            camera_view: live
+            aspect_ratio: '16:9'
+            name: Hinterm Haus
+            show_state: false
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  overflow: hidden;
+                  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+                }
+          - type: picture-entity
+            grid_options:
+              columns: 6
+            entity: camera.west_standardauflosung
+            camera_view: live
+            aspect_ratio: '16:9'
+            name: West
+            show_state: false
+            tap_action:
+              action: more-info
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 20px;
+                  overflow: hidden;
+                  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+                }
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Innen (Privatsphäre – nur auf Anforderung)
+            heading_style: title
+            icon: mdi:home-lock
+          - type: custom:bubble-card
+            grid_options:
+              columns: full
+            card_type: button
+            button_type: name
+            entity: camera.haustuer_innen_standardauflosung
+            name: Haustür innen
+            icon: mdi:door
+            tap_action:
+              action: navigate
+              navigation_path: '#cam-haustuer-innen'
+          - type: custom:bubble-card
+            grid_options:
+              columns: full
+            card_type: button
+            button_type: name
+            entity: camera.eleano_standardauflosung
+            name: Eleano
+            icon: mdi:teddy-bear
+            tap_action:
+              action: navigate
+              navigation_path: '#cam-eleano'
+      - type: grid
+        column_span: 3
+        cards:
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#cam-tuerklingel'
+            name: Türklingel
+            icon: mdi:doorbell-video
+            cards:
+              - type: picture-entity
+                entity: camera.tuerklingel_fliessend
+                camera_view: live
+                aspect_ratio: '16:9'
+                show_name: false
+                show_state: false
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: light.tuerklingel_infrarotlicht_im_nachtmodus
+                name: Infrarotlicht
+                icon: mdi:light-flood-down
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: switch.tuerklingel_aufzeichnen
+                name: Aufzeichnung
+                icon: mdi:record-rec
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#cam-vorne-rechts'
+            name: Vorne rechts
+            icon: mdi:cctv
+            cards:
+              - type: picture-entity
+                entity: camera.vorne_rechts_standardauflosung
+                camera_view: live
+                aspect_ratio: '16:9'
+                show_name: false
+                show_state: false
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: switch.vorne_rechts_aufzeichnen
+                name: Aufzeichnung
+                icon: mdi:record-rec
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: switch.vorne_rechts_push_benachrichtigungen
+                name: Push-Benachrichtigungen
+                icon: mdi:cellphone-message
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#cam-vorne-links'
+            name: Vorne links
+            icon: mdi:cctv
+            cards:
+              - type: picture-entity
+                entity: camera.vorne_links_standardauflosung
+                camera_view: live
+                aspect_ratio: '16:9'
+                show_name: false
+                show_state: false
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: light.vorne_links_flutlicht
+                name: Flutlicht
+                icon: mdi:spotlight-beam
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: switch.vorne_links_aufzeichnen
+                name: Aufzeichnung
+                icon: mdi:record-rec
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#cam-hinterm-haus'
+            name: Hinterm Haus
+            icon: mdi:cctv
+            cards:
+              - type: picture-entity
+                entity: camera.hinterm_haus_duo_standardauflosung
+                camera_view: live
+                aspect_ratio: '16:9'
+                show_name: false
+                show_state: false
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: light.hinterm_haus_duo_flutlicht
+                name: Flutlicht
+                icon: mdi:spotlight-beam
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: switch.hinterm_haus_duo_aufzeichnen
+                name: Aufzeichnung
+                icon: mdi:record-rec
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#cam-west'
+            name: West
+            icon: mdi:cctv
+            cards:
+              - type: picture-entity
+                entity: camera.west_standardauflosung
+                camera_view: live
+                aspect_ratio: '16:9'
+                show_name: false
+                show_state: false
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: light.west_flutlicht
+                name: Flutlicht
+                icon: mdi:spotlight-beam
+              - type: custom:bubble-card
+                card_type: button
+                button_type: switch
+                entity: switch.west_aufzeichnen
+                name: Aufzeichnung
+                icon: mdi:record-rec
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#cam-haustuer-innen'
+            name: Haustür innen
+            icon: mdi:door
+            cards:
+              - type: picture-entity
+                entity: camera.haustuer_innen_standardauflosung
+                camera_view: live
+                aspect_ratio: '16:9'
+                show_name: false
+                show_state: false
+              - type: grid
+                columns: 3
+                square: false
+                cards:
+                  - type: button
+                    entity: button.haustuer_innen_ptz_links
+                    name: Links
+                    icon: mdi:arrow-left-bold
+                    show_state: false
+                    tap_action:
+                      action: perform-action
+                      perform_action: button.press
+                      target:
+                        entity_id: button.haustuer_innen_ptz_links
+                  - type: button
+                    entity: button.haustuer_innen_gehe_zu_startposition
+                    name: Start
+                    icon: mdi:home-map-marker
+                    show_state: false
+                    tap_action:
+                      action: perform-action
+                      perform_action: button.press
+                      target:
+                        entity_id: button.haustuer_innen_gehe_zu_startposition
+                  - type: button
+                    entity: button.haustuer_innen_ptz_rechts
+                    name: Rechts
+                    icon: mdi:arrow-right-bold
+                    show_state: false
+                    tap_action:
+                      action: perform-action
+                      perform_action: button.press
+                      target:
+                        entity_id: button.haustuer_innen_ptz_rechts
+          - type: custom:bubble-card
+            card_type: pop-up
+            hash: '#cam-eleano'
+            name: Eleano
+            icon: mdi:teddy-bear
+            cards:
+              - type: picture-entity
+                entity: camera.eleano_standardauflosung
+                camera_view: live
+                aspect_ratio: '16:9'
+                show_name: false
+                show_state: false
+              - type: grid
+                columns: 3
+                square: false
+                cards:
+                  - type: button
+                    entity: button.eleano_ptz_links
+                    name: Links
+                    icon: mdi:arrow-left-bold
+                    show_state: false
+                    tap_action:
+                      action: perform-action
+                      perform_action: button.press
+                      target:
+                        entity_id: button.eleano_ptz_links
+                  - type: button
+                    entity: button.eleano_gehe_zu_startposition
+                    name: Start
+                    icon: mdi:home-map-marker
+                    show_state: false
+                    tap_action:
+                      action: perform-action
+                      perform_action: button.press
+                      target:
+                        entity_id: button.eleano_gehe_zu_startposition
+                  - type: button
+                    entity: button.eleano_ptz_rechts
+                    name: Rechts
+                    icon: mdi:arrow-right-bold
+                    show_state: false
+                    tap_action:
+                      action: perform-action
+                      perform_action: button.press
+                      target:
+                        entity_id: button.eleano_ptz_rechts
+  - title: Haushalt
+    path: haushalt
+    icon: mdi:clipboard-list
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Einkaufsliste
+            heading_style: title
+            icon: mdi:cart
+          - type: todo-list
+            entity: todo.einkaufsliste
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Wetter
+            heading_style: title
+            icon: mdi:weather-partly-cloudy
+          - type: weather-forecast
+            entity: weather.forecast_home
+            forecast_type: daily
+            show_current: true
+            show_forecast: true
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: System
+            heading_style: title
+            icon: mdi:server
+          - type: entities
+            entities:
+              - entity: sensor.backup_backup_manager_zustand
+                name: Backup-Status
+              - entity: sensor.backup_letztes_erfolgreiches_automatisches_backup
+                name: Letztes Backup
+              - entity: sensor.backup_nachstes_geplantes_automatisches_backup
+                name: Nächstes Backup
+              - entity: binary_sensor.rpi_power_status
+                name: Stromversorgung
+          - type: entities
+            title: Updates
+            entities:
+              - update.home_assistant_core_update
+              - update.home_assistant_supervisor_update
+              - update.home_assistant_operating_system_update
+              - update.get_hacs_update
+              - update.mushroom_update
+              - update.bubble_card_update
+              - update.card_mod_update

@@ -1,0 +1,1077 @@
+# =====================================================================
+# Wallbox-Package FINAL v3 für lachand/EV_charger (geprüft gegen v2.25.0)
+# Ablage: config/packages/wallbox.yaml
+# Voraussetzung in configuration.yaml:
+#   homeassistant:
+#     packages: !include_dir_named packages
+#
+# NEU angelegte Entities (nicht von der Integration!):
+#   binary_sensor.wallbox_auto_angeschlossen
+#   binary_sensor.wallbox_ladung_aktiv
+#   binary_sensor.wallbox_pv_ladung_aktiv
+#   binary_sensor.wallbox_fehler
+#   binary_sensor.wallbox_pv_pausiert
+#   sensor.wallbox_status
+#   sensor.wallbox_pv_entscheidung
+#   sensor.wallbox_pv_einspeisung
+#   sensor.wallbox_pv_ueberschuss_fuer_auto
+#   sensor.wallbox_pv_zielstrom_3phasig  # 3-phasiger Zielstrom in 1-A-Schritten; unter 4,14 kW ggf. Netzbezug
+#   script.wallbox_sofortladen
+#   script.wallbox_stopp
+#   input_select.wallbox_sofortladen_dauer
+#   input_boolean.wallbox_pv_automatik
+#   input_boolean.wallbox_netzbezug_schutz  # Alt/optional, nicht Teil der neuen Regelung
+#   timer.wallbox_pv_pause
+#   script.wallbox_schwelle_anpassen
+#   script.wallbox_schwellen_setzen
+# Nach dem Neuladen die tatsächlich erzeugten entity_ids prüfen
+# (bei Namenskonflikten hängt HA "_2" an).
+# =====================================================================
+
+template:
+  - binary_sensor:
+      # STATUS_MAP im Code: IDLEINS->plugged_in, WORKING->charging,
+      # WAIT->waiting, PAUSE->paused, STOP->charged.
+      # idle = "ready, unplugged" laut Code-Kommentar.
+      # waiting/paused als "angeschlossen" ist eine Annahme (unsicher).
+      - name: "Wallbox Auto angeschlossen"
+        unique_id: wallbox_auto_angeschlossen
+        device_class: plug
+        state: >
+          {{ states('sensor.tuya_ev_charger_status')
+             in ['plugged_in', 'charging', 'waiting', 'paused', 'charged'] }}
+        availability: "{{ has_value('sensor.tuya_ev_charger_status') }}"
+
+      # Gleiche Logik wie der evcc-Status der Integration: >= 0,1 kW = lädt.
+      # status 'charging' allein reicht nicht (WORKING bleibt nach
+      # Ladeende teils stehen).
+      - name: "Wallbox Ladung aktiv"
+        unique_id: wallbox_ladung_aktiv
+        device_class: battery_charging
+        state: >
+          {% set e = 'sensor.tuya_ev_charger_total_power' %}
+          {% set p = states(e) | float(0) %}
+          {% set kw = p / 1000 if state_attr(e, 'unit_of_measurement') == 'W' else p %}
+          {{ kw >= 0.1 }}
+        availability: "{{ has_value('sensor.tuya_ev_charger_total_power') }}"
+
+      # Eigene HA-PV-Regelung: PV-Ladung = unsere Automatik ist aktiv,
+      # das Auto lädt und Sofortladen hat nicht Vorrang.
+      - name: "Wallbox PV-Ladung aktiv"
+        unique_id: wallbox_pv_ladung_aktiv
+        device_class: running
+        state: >
+          {{ is_state('input_boolean.wallbox_pv_automatik', 'on')
+             and not is_state('timer.wallbox_pv_pause', 'active')
+             and not is_state('switch.garage_tuya_ev_charger_force_charge', 'on')
+             and is_state('binary_sensor.wallbox_ladung_aktiv', 'on') }}
+
+      # Alarm-Sensor liefert JSON wie {"v": <Code>, "t": <Zeit>}.
+      # v = 0 bedeutet kein Alarm (gleiche Logik wie im Dashboard).
+      - name: "Wallbox Fehler"
+        unique_id: wallbox_fehler
+        device_class: problem
+        state: >
+          {% set a = states('sensor.tuya_ev_charger_alarm') | trim %}
+          {% set code = ((a | from_json).get('v', 0) | int(0)) if a.startswith('{') else 0 %}
+          {{ is_state('sensor.tuya_ev_charger_status', 'fault') or code != 0 }}
+
+      # Pause der eigenen PV-Regelung.
+      - name: "Wallbox PV pausiert"
+        unique_id: wallbox_pv_pausiert
+        device_class: running
+        icon: mdi:pause-circle-outline
+        state: "{{ is_state('timer.wallbox_pv_pause', 'active') }}"
+
+  - sensor:
+      # Integration hat nur en/fr-Übersetzungen -> deutsche Anzeige hier.
+      - name: "Wallbox Status"
+        unique_id: wallbox_status
+        icon: >
+          {% set s = states('sensor.tuya_ev_charger_status') %}
+          {{ {'charging': 'mdi:ev-station', 'plugged_in': 'mdi:ev-plug-type2',
+              'fault': 'mdi:alert-circle', 'charged': 'mdi:battery-check'}
+             .get(s, 'mdi:ev-station') }}
+        state: >
+          {% set s = states('sensor.tuya_ev_charger_status') %}
+          {{ {'sleep': 'Standby',
+              'idle': 'Bereit (kein Auto)',
+              'plugged_in': 'Auto angeschlossen',
+              'charging': 'Laden freigegeben',
+              'waiting': 'Wartet',
+              'paused': 'Pausiert',
+              'charged': 'Ladung beendet',
+              'fault': 'Fehler',
+              'unknown': 'Unbekannter Zustand',
+              'unavailable': 'Nicht erreichbar'}.get(s, s) }}
+        attributes:
+          roh: "{{ states('sensor.tuya_ev_charger_status') }}"
+
+      # Alle Werte aus DecisionReason (charge_gates.py) + die zwei Werte,
+      # die der Code zusätzlich setzt, aber nicht im Enum führt.
+      - name: "Wallbox PV-Entscheidung"
+        unique_id: wallbox_pv_entscheidung
+        icon: mdi:head-cog-outline
+        state: >
+          {% set r = states('sensor.tuya_ev_charger_surplus_last_decision_reason') %}
+          {% set t = {
+            'startup': 'Integration startet',
+            'rerun': 'Neubewertung',
+            'evaluation_exception': 'Auswertung fehlgeschlagen – siehe Log',
+            'no_coordinator_data': 'Noch keine Daten von der Wallbox',
+            'no_allowed_currents': 'Kein nutzbarer Ladestrom verfügbar',
+            'external_charge_blocked': 'Blockiert durch externe Bedingung',
+            'load_limit_no_headroom': 'Gestoppt: Hausanschluss-Limit erreicht',
+            'load_limit_reduced': 'Reduziert: Hausanschluss-Limit',
+            'inverter_limit_no_headroom': 'Gestoppt: Wechselrichter-Limit erreicht',
+            'inverter_limit_reduced': 'Reduziert: Wechselrichter-Limit',
+            'force_charge_requested': 'Sofortladen angefordert',
+            'force_charge_start': 'Sofortladen startet',
+            'force_charge_holding': 'Sofortladen läuft',
+            'force_charge_adjust_current': 'Sofortladen – Ladestrom wird gesetzt',
+            'force_charge_failed_set_current': 'Sofortladen – Ladestrom abgelehnt',
+            'force_charge_failed_start': 'Sofortladen – Start abgelehnt',
+            'force_charge_cleared': 'Sofortladen beendet',
+            'tariff_off_peak': 'Laden im Niedertarif',
+            'tariff_deadline': 'Laden für Abfahrtszeit',
+            'tariff_waiting_for_off_peak': 'Wartet auf Niedertarif',
+            'tariff_unrestricted': 'Keine Tarifbeschränkung',
+            'battery_floor_off_peak_start': 'Hausakku leer – Netzladen im Niedertarif startet',
+            'battery_floor_off_peak_charging': 'Hausakku leer – Netzladen im Niedertarif',
+            'mode_disabled': 'PV-Automatik ausgeschaltet',
+            'surplus_paused': 'PV-Automatik pausiert',
+            'surplus_paused_active': 'PV-Automatik ist pausiert',
+            'surplus_pause_cleared': 'PV-Pause aufgehoben',
+            'missing_grid_sensor': 'Kein Netzsensor konfiguriert',
+            'grid_sensor_unavailable': 'Netzsensor nicht verfügbar',
+            'min_runtime_guard': 'Mindestlaufzeit – noch kein Stopp',
+            'stop_delay_pending': 'Stopp in Kürze – Überschuss wird bestätigt',
+            'no_target_current': 'Überschuss reicht für keinen Ladestrom',
+            'adjust_current': 'Ladestrom wird an Überschuss angepasst',
+            'adjust_cooldown_active': 'Wartezeit vor nächster Stromänderung',
+            'target_already_reached': 'Zielstrom bereits erreicht',
+            'holding_current': 'Ladestrom wird gehalten',
+            'below_stop_threshold': 'Gestoppt: Überschuss unter Stopp-Schwelle',
+            'insufficient_surplus_current': 'Überschuss zu klein für Mindeststrom',
+            'battery_soc_below_threshold': 'Hausakku zu niedrig',
+            'session_limit_duration': 'Gestoppt: Zeitlimit erreicht',
+            'session_limit_energy': 'Gestoppt: Energielimit erreicht',
+            'session_limit_end_time': 'Gestoppt: Endzeit erreicht',
+            'below_start_threshold': 'Überschuss unter Start-Schwelle',
+            'start_delay_pending': 'Start in Kürze – Überschuss wird bestätigt',
+            'surplus_start': 'Start mit PV-Überschuss',
+            'failed_set_startup_current': 'Wallbox hat Startstrom abgelehnt',
+            'failed_start_charge': 'Wallbox hat Start abgelehnt',
+            'unknown': 'Unbekannt',
+            'unavailable': 'Nicht verfügbar'
+          } %}
+          {{ t.get(r, r) }}
+        attributes:
+          roh: "{{ states('sensor.tuya_ev_charger_surplus_last_decision_reason') }}"
+          entschieden_von: "{{ state_attr('sensor.tuya_ev_charger_surplus_last_decision_reason', 'decided_by') }}"
+
+      # Shelly: positiv = Bezug, negativ = Einspeisung.
+      - name: "Wallbox PV Einspeisung"
+        unique_id: wallbox_pv_einspeisung
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set e = 'sensor.shellypro3em_38182bdee0e0_leistung' %}
+          {% set g = states(e) | float(0) %}
+          {% set w = g * 1000 if state_attr(e, 'unit_of_measurement') == 'kW' else g %}
+          {{ [0, -w] | max | round(0) }}
+        availability: "{{ has_value('sensor.shellypro3em_38182bdee0e0_leistung') }}"
+
+      # Näherung der Integrationsformel (Einspeisung + aktuelle Wallbox-
+      # Leistung), OHNE Hausakku/Abregelung/Prognose-Glättung.
+      - name: "Wallbox PV Ueberschuss fuer Auto"
+        unique_id: wallbox_pv_ueberschuss_fuer_auto
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set g_e = 'sensor.shellypro3em_38182bdee0e0_leistung' %}
+          {% set ev_e = 'sensor.tuya_ev_charger_total_power' %}
+          {% set g = states(g_e) | float(0) %}
+          {% set g_w = g * 1000 if state_attr(g_e, 'unit_of_measurement') == 'kW' else g %}
+          {% set ev = states(ev_e) | float(0) %}
+          {% set ev_w = ev if state_attr(ev_e, 'unit_of_measurement') == 'W' else ev * 1000 %}
+          {{ [0, ev_w - g_w] | max | round(0) }}
+        availability: >
+          {{ has_value('sensor.shellypro3em_38182bdee0e0_leistung')
+             and has_value('sensor.tuya_ev_charger_total_power') }}
+
+      # Zielstrom der EIGENEN PV-Regelung.
+      # Verfügbarer Überschuss = Einspeisung + bereits laufende Wallboxleistung.
+      # 3-phasig: Leistung / (230 V * 3) = Leistung / 690.
+      #
+      # DP 107 zeigt nur die Schnellwahlwerte der Tuya-App (6/8/10/13/16 A).
+      # Die Integration v2.25.0 dokumentiert und unterstützt bei continuous_current
+      # jeden ganzzahligen Wert zwischen 6 und 16 A. Deshalb regeln wir hier fein
+      # in 1-A-Schritten. Unter 4,14 kW darf trotzdem mit 6 A gestartet werden,
+      # sofern die frei einstellbare Startschwelle erreicht ist; die Differenz
+      # kommt dann bewusst aus dem Netz.
+      - name: "Wallbox PV Zielstrom 3-phasig"
+        unique_id: wallbox_pv_zielstrom_3phasig
+        unit_of_measurement: A
+        device_class: current
+        state_class: measurement
+        icon: mdi:current-ac
+        state: >
+          {% set s = states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) %}
+          {% set start = states('number.tuya_ev_charger_surplus_start_threshold') | float(0) %}
+          {% set stop = states('number.tuya_ev_charger_surplus_stop_threshold') | float(0) %}
+          {% set running = is_state('binary_sensor.wallbox_ladung_aktiv', 'on') %}
+          {% set keine_annahme = is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an', 'on') %}
+          {% set calc = (s / 690) | int(0) %}
+          {% set amp = [[calc, 6] | max, 16] | min %}
+          {% if keine_annahme %}
+            0
+          {% elif (not running and s < start) or (running and s <= stop) %}
+            0
+          {% else %}
+            {{ amp }}
+          {% endif %}
+        attributes:
+          verfuegbarer_ueberschuss_w: >
+            {{ states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) | round(0) | int }}
+          startschwelle_w: >
+            {{ states('number.tuya_ev_charger_surplus_start_threshold') | float(0) | round(0) | int }}
+          stoppschwelle_w: >
+            {{ states('number.tuya_ev_charger_surplus_stop_threshold') | float(0) | round(0) | int }}
+          rechnerisch_a: >
+            {{ (states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) / 690) | round(2) }}
+          regelbereich: "6-16 A in 1-A-Schritten"
+          netzanteil_bei_6a_w: >
+            {% set s = states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) %}
+            {{ [0, 4140 - s] | max | round(0) | int }}
+          formel: "floor(verfügbarer Überschuss / (230 V × 3)), begrenzt auf 6-16 A"
+        availability: >
+          {{ has_value('sensor.wallbox_pv_ueberschuss_fuer_auto')
+             and has_value('number.tuya_ev_charger_surplus_start_threshold')
+             and has_value('number.tuya_ev_charger_surplus_stop_threshold') }}
+
+      # --- AC-LADEKURVE ---
+      # Diese Sensoren werden vom Recorder historisiert und bilden das reale
+      # Ladeverhalten über die Zeit ab. 0 bei nicht aktiver Ladung sorgt dafür,
+      # dass Start und Ende der Ladekurve im Diagramm klar sichtbar sind.
+      - name: "Wallbox AC Ladekurve Leistung"
+        unique_id: wallbox_ac_ladekurve_leistung
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+        icon: mdi:chart-line
+        state: >
+          {% set e = 'sensor.tuya_ev_charger_total_power' %}
+          {% set p = states(e) | float(0) %}
+          {% set kw = p / 1000 if state_attr(e, 'unit_of_measurement') == 'W' else p %}
+          {{ (kw if is_state('binary_sensor.wallbox_ladung_aktiv','on') else 0) | round(3) }}
+        availability: "{{ has_value('sensor.tuya_ev_charger_total_power') }}"
+
+      - name: "Wallbox AC Ladekurve Zielstrom"
+        unique_id: wallbox_ac_ladekurve_zielstrom
+        unit_of_measurement: A
+        device_class: current
+        state_class: measurement
+        icon: mdi:current-ac
+        state: >
+          {{ (states('sensor.wallbox_pv_zielstrom_3_phasig') | float(0))
+             if is_state('binary_sensor.wallbox_ladung_aktiv','on') else 0 }}
+        availability: "{{ has_value('sensor.wallbox_pv_zielstrom_3_phasig') }}"
+
+      - name: "Wallbox AC Ladekurve Sollstrom"
+        unique_id: wallbox_ac_ladekurve_sollstrom
+        unit_of_measurement: A
+        device_class: current
+        state_class: measurement
+        icon: mdi:ev-station
+        state: >
+          {{ (states('number.tuya_ev_charger_current_setpoint') | float(0))
+             if is_state('binary_sensor.wallbox_ladung_aktiv','on') else 0 }}
+        availability: "{{ has_value('number.tuya_ev_charger_current_setpoint') }}"
+
+      - name: "Wallbox AC Ladekurve PV verfuegbar"
+        unique_id: wallbox_ac_ladekurve_pv_verfuegbar
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >
+          {{ (states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) / 1000) | round(3) }}
+        availability: "{{ has_value('sensor.wallbox_pv_ueberschuss_fuer_auto') }}"
+
+      - name: "Wallbox AC Ladekurve Netzfluss"
+        unique_id: wallbox_ac_ladekurve_netzfluss
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+        icon: mdi:transmission-tower
+        state: >
+          {% set e = 'sensor.shellypro3em_38182bdee0e0_leistung' %}
+          {% set g = states(e) | float(0) %}
+          {{ (g / 1000 if state_attr(e, 'unit_of_measurement') == 'W' else g) | round(3) }}
+        attributes:
+          vorzeichen: "positiv = Netzbezug, negativ = Einspeisung"
+        availability: "{{ has_value('sensor.shellypro3em_38182bdee0e0_leistung') }}"
+
+input_text:
+  wallbox_letzte_regelaktion:
+    name: Wallbox letzte Regelaktion
+    icon: mdi:timeline-clock
+    max: 255
+
+  wallbox_letzte_regelwerte:
+    name: Wallbox letzte Regelwerte
+    icon: mdi:clipboard-text-clock
+    max: 255
+
+input_select:
+  # Merkt sich die zuletzt gewählte Dauer (kein "initial" -> bleibt nach Neustart erhalten)
+  wallbox_sofortladen_dauer:
+    name: Wallbox Sofortladen Dauer
+    icon: mdi:timer-outline
+    options:
+      - "1 Stunde"
+      - "3 Stunden"
+      - "6 Stunden"
+      - "Bis voll"
+
+input_boolean:
+  # Hauptschalter der EIGENEN Home-Assistant-PV-Regelung.
+  # Die Solar-Surplus-Regelung der Tuya-Integration bleibt dabei AUS,
+  # damit niemals zwei Regler gleichzeitig den Ladestrom verändern.
+  wallbox_pv_automatik:
+    name: Wallbox PV-Automatik
+    icon: mdi:solar-power
+
+  # Wird nach einem echten PV-Startversuch gesetzt, wenn das angeschlossene
+  # Fahrzeug trotz ausreichendem PV-Angebot 90 s lang praktisch keine Leistung
+  # annimmt. Typischer Fall: Akku ist voll. Der Zustand bleibt bis zum Abstecken
+  # bestehen und verhindert wiederholte Startversuche.
+  wallbox_auto_nimmt_keine_ladung_an:
+    name: Wallbox Auto nimmt keine Ladung an
+    icon: mdi:battery-check
+
+  # Alter optionaler Schutz; für die neue Regelung nicht erforderlich.
+  wallbox_netzbezug_schutz:
+    name: Wallbox Netzbezug-Schutz
+    icon: mdi:shield-sun
+
+timer:
+  wallbox_pv_pause:
+    name: Wallbox PV-Pause
+    icon: mdi:pause-circle-outline
+    restore: true
+
+  # Nur nach einem von der PV-Automatik ausgelösten Startversuch aktiv.
+  # 90 s geben Fahrzeug und Wallbox genug Zeit für den Ladehandshake.
+  wallbox_ladeannahme_test:
+    name: Wallbox Ladeannahme-Test
+    icon: mdi:car-clock
+    duration: "00:01:30"
+    restore: false
+
+script:
+  wallbox_regelung_log:
+    alias: "Wallbox Regelung protokollieren"
+    icon: mdi:timeline-text-outline
+    mode: queued
+    max: 30
+    fields:
+      aktion:
+        name: Aktion
+        required: true
+        selector:
+          text:
+      details:
+        name: Details
+        required: false
+        selector:
+          text:
+    sequence:
+      - variables:
+          u_w: "{{ states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) | round(0) | int }}"
+          ziel_a: "{{ states('sensor.wallbox_pv_zielstrom_3_phasig') | float(0) | round(0) | int }}"
+          soll_a: "{{ states('number.tuya_ev_charger_current_setpoint') | float(0) | round(0) | int }}"
+          p_kw: >
+            {% set e='sensor.tuya_ev_charger_total_power' %}
+            {% set p=states(e)|float(0) %}
+            {{ (p/1000 if state_attr(e,'unit_of_measurement') == 'W' else p) | round(2) }}
+          grid_kw: >
+            {% set e='sensor.shellypro3em_38182bdee0e0_leistung' %}
+            {% set g=states(e)|float(0) %}
+            {{ (g/1000 if state_attr(e,'unit_of_measurement') == 'W' else g) | round(2) }}
+          session_kwh: "{{ states('sensor.tuya_ev_charger_session_energy') | float(0) | round(2) }}"
+          zeit: "{{ now().strftime('%d.%m.%Y %H:%M:%S') }}"
+          werte: >
+            PV {{ u_w }} W · Ziel {{ ziel_a }} A · gesetzt {{ soll_a }} A ·
+            AC {{ p_kw }} kW · Netz {{ grid_kw }} kW · Session {{ session_kwh }} kWh
+          meldung: >
+            {{ aktion }}{% if details is defined and details | string | trim %} – {{ details }}{% endif %}. {{ werte }}
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.wallbox_letzte_regelaktion
+        data:
+          value: "{{ zeit }} · {{ aktion }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.wallbox_letzte_regelwerte
+        data:
+          value: "{{ werte }}"
+      - action: logbook.log
+        data:
+          name: "Wallbox PV-Regelung"
+          message: "{{ meldung }}"
+          entity_id: input_boolean.wallbox_pv_automatik
+          domain: automation
+
+  wallbox_sofortladen:
+    alias: "Wallbox Sofortladen"
+    icon: mdi:flash
+    mode: queued
+    max: 5
+    fields:
+      strom_a:
+        name: Ladestrom
+        required: true
+        selector:
+          number: {min: 6, max: 16, step: 1, unit_of_measurement: A}
+      dauer_min:
+        name: Dauer (optional)
+        description: Leer = Auswahl aus input_select.wallbox_sofortladen_dauer
+        selector:
+          number: {min: 1, max: 1440, step: 1, unit_of_measurement: min}
+    sequence:
+      - variables:
+          auswahl: "{{ states('input_select.wallbox_sofortladen_dauer') }}"
+          # 1440 min = Maximum des Services (24 h). "Bis voll" wird von der
+          # Automation unten beendet, sobald das Auto fertig ist.
+          dauer: >
+            {% if dauer_min is defined %}{{ dauer_min | int(180) }}
+            {% else %}{{ {'1 Stunde': 60, '3 Stunden': 180, '6 Stunden': 360,
+                         'Bis voll': 1440}.get(auswahl, 180) }}{% endif %}
+      # Einen evtl. noch laufenden Stopp-Ablauf abbrechen (sonst schaltet
+      # dessen Nachprüfung die neue Ladung wieder ab).
+      - action: script.turn_off
+        target:
+          entity_id: script.wallbox_stopp
+      # Ohne Auto sinnlos; bei Wallboxen ohne DP 140 würde der Controller
+      # den Startbefehl sonst bei jeder Auswertung wiederholen (aus dem Code
+      # abgeleitet, nicht getestet).
+      - if:
+          - condition: state
+            entity_id: binary_sensor.wallbox_auto_angeschlossen
+            state: "off"
+        then:
+          - action: persistent_notification.create
+            data:
+              title: Wallbox
+              message: Sofortladen nicht gestartet – kein Auto angeschlossen.
+              notification_id: wallbox_sofortladen
+          - stop: Kein Auto angeschlossen
+      # Eine aktive Pause der eigenen PV-Regelung aufheben.
+      - if:
+          - condition: state
+            entity_id: timer.wallbox_pv_pause
+            state: "active"
+        then:
+          - action: timer.cancel
+            target:
+              entity_id: timer.wallbox_pv_pause
+      # Die interne Solar-Surplus-Regelung bleibt AUS. Force Charge wird
+      # weiterhin von der Integration ausgeführt; danach übernimmt unsere HA-Regelung.
+      - action: tuya_ev_charger.force_charge_for
+        data:
+          duration_minutes: "{{ dauer | int(180) }}"
+          current_a: "{{ strom_a | int(6) }}"
+      - action: script.wallbox_regelung_log
+        data:
+          aktion: "Sofortladen gestartet"
+          details: "{{ strom_a | int(6) }} A für {{ dauer | int(180) }} min"
+
+  wallbox_stopp:
+    alias: "Wallbox Stopp"
+    icon: mdi:stop-circle
+    mode: single
+    max_exceeded: silent
+    fields:
+      pv_pause_min:
+        name: PV-Automatik pausieren
+        description: 0 = PV darf sofort wieder übernehmen
+        selector:
+          number: {min: 0, max: 1440, step: 1, unit_of_measurement: min}
+    sequence:
+      - variables:
+          pv_pause: "{{ pv_pause_min | default(0) | int(0) }}"
+      # 1) Force Charge ZUERST beenden. Sonst startet der Controller die
+      #    Ladung in der nächsten Auswertung sofort wieder.
+      - action: tuya_ev_charger.force_charge_for
+        data:
+          duration_minutes: 0
+      - action: script.wallbox_regelung_log
+        data:
+          aktion: "Manueller Stopp angefordert"
+          details: "PV-Pause {{ pv_pause }} min"
+      # 2) Optional: eigene PV-Automatik pausieren.
+      - if:
+          - condition: template
+            value_template: "{{ pv_pause > 0 }}"
+        then:
+          - action: timer.start
+            target:
+              entity_id: timer.wallbox_pv_pause
+            data:
+              duration: >
+                {% set s = pv_pause | int(0) * 60 %}
+                {{ '%02d:%02d:%02d' | format(s // 3600, (s % 3600) // 60, s % 60) }}
+      # 3) Eine evtl. schon laufende Auswertung (mit altem Force-Zustand)
+      #    abwarten, dann die Wallbox explizit stoppen.
+      - delay: "00:00:03"
+      - action: switch.turn_off
+        target:
+          entity_id: switch.tuya_ev_charger_charging_session
+      # 4) Am Messwert prüfen, NICHT am Switch (der hält den befohlenen
+      #    Zustand bis zu 90 s).
+      - wait_template: "{{ is_state('binary_sensor.wallbox_ladung_aktiv', 'off') }}"
+        timeout: "00:00:45"
+        continue_on_timeout: true
+      - if:
+          - condition: state
+            entity_id: binary_sensor.wallbox_ladung_aktiv
+            state: "on"
+          - condition: state
+            entity_id: switch.garage_tuya_ev_charger_force_charge
+            state: "off"
+          # Nicht gegen einen legitimen PV-Neustart kämpfen
+          - condition: state
+            entity_id: binary_sensor.wallbox_pv_ladung_aktiv
+            state: "off"
+        then:
+          - action: switch.turn_off
+            target:
+              entity_id: switch.tuya_ev_charger_charging_session
+          - wait_template: "{{ is_state('binary_sensor.wallbox_ladung_aktiv', 'off') }}"
+            timeout: "00:00:30"
+            continue_on_timeout: true
+          - if:
+              - condition: state
+                entity_id: binary_sensor.wallbox_ladung_aktiv
+                state: "on"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: Wallbox
+                  message: Stopp nicht bestätigt – Wallbox meldet weiterhin Ladeleistung.
+                  notification_id: wallbox_stopp
+
+  # +/- Schritte für die PV-Schwellen (Dashboard-Buttons).
+  # Die Integration erzwingt selbst: Stopp <= Start, 0 - 22000 W, ganze Watt.
+  wallbox_schwelle_anpassen:
+    alias: "Wallbox PV-Schwelle anpassen"
+    icon: mdi:tune-vertical
+    mode: queued
+    max: 20
+    fields:
+      schwelle:
+        name: Schwelle
+        required: true
+        selector:
+          select:
+            options: [start, stop]
+      delta_w:
+        name: Änderung
+        required: true
+        selector:
+          number: {min: -2000, max: 2000, step: 50, unit_of_measurement: W}
+    sequence:
+      - variables:
+          ziel: >
+            {{ 'number.tuya_ev_charger_surplus_start_threshold' if schwelle == 'start'
+               else 'number.tuya_ev_charger_surplus_stop_threshold' }}
+          neu: >
+            {{ [0, [22000, (states(ziel) | float(0)) + (delta_w | float(0))] | min] | max | round(0) | int }}
+      - action: number.set_value
+        target:
+          entity_id: "{{ ziel }}"
+        data:
+          value: "{{ neu }}"
+
+  # Vorlagen: erst Start, dann Stopp setzen (Stopp wird sonst auf Start geklemmt).
+  wallbox_schwellen_setzen:
+    alias: "Wallbox PV-Schwellen setzen"
+    icon: mdi:tune
+    mode: queued
+    max: 5
+    fields:
+      start_w:
+        name: Startschwelle
+        required: true
+        selector:
+          number: {min: 0, max: 22000, step: 50, unit_of_measurement: W}
+      stop_w:
+        name: Stoppschwelle
+        required: true
+        selector:
+          number: {min: 0, max: 22000, step: 50, unit_of_measurement: W}
+    sequence:
+      - action: number.set_value
+        target:
+          entity_id: number.tuya_ev_charger_surplus_start_threshold
+        data:
+          value: "{{ start_w | int }}"
+      - action: number.set_value
+        target:
+          entity_id: number.tuya_ev_charger_surplus_stop_threshold
+        data:
+          value: "{{ [stop_w | int, start_w | int] | min }}"
+
+automation:
+  # OPTIONAL. Technischer Grund: Ist die PV-Automatik AUS, stoppt nach
+  # Ablauf von Force Charge niemand die Ladung (Gate "mode_disabled" = IDLE).
+  - id: wallbox_nach_sofortladen_ohne_pv_stoppen
+    alias: "Wallbox: nach Sofortladen ohne PV-Automatik stoppen"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: switch.garage_tuya_ev_charger_force_charge
+        from: "on"
+        to: "off"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.wallbox_pv_automatik
+        state: "off"
+      - condition: state
+        entity_id: binary_sensor.wallbox_ladung_aktiv
+        state: "on"
+      - condition: state
+        entity_id: script.wallbox_sofortladen
+        state: "off"
+    actions:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.tuya_ev_charger_charging_session
+
+  # Beendet Sofortladen, wenn das Auto fertig ist. Gilt für jede Dauer
+  # (ist das Auto voll, ist weiteres Force Charge sinnlos).
+  # Primär: Status "charged" (Firmware STOP) – derselbe Zustand, den der
+  # Device-Trigger "charge_complete" der Integration nutzt.
+  # Fallback (Heuristik): in dieser Session schon geladen, dann 20 min
+  # keine Leistung mehr – für Autos, die nicht sauber STOP melden.
+  - id: wallbox_sofortladen_auto_voll
+    alias: "Wallbox: Sofortladen beenden, wenn Auto voll"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.tuya_ev_charger_status
+        to: "charged"
+        for: "00:02:00"
+        id: status
+      - trigger: state
+        entity_id: binary_sensor.wallbox_ladung_aktiv
+        to: "off"
+        for: "00:20:00"
+        id: leistung
+    conditions:
+      - condition: state
+        entity_id: switch.garage_tuya_ev_charger_force_charge
+        state: "on"
+      - condition: or
+        conditions:
+          - condition: trigger
+            id: status
+          - condition: numeric_state
+            entity_id: sensor.tuya_ev_charger_session_energy
+            above: 0.5
+    actions:
+      - action: script.wallbox_stopp
+        data:
+          pv_pause_min: 0
+      - action: persistent_notification.create
+        data:
+          title: Wallbox
+          message: "Sofortladen beendet – Auto meldet voll ({{ states('sensor.tuya_ev_charger_session_energy') }} kWh)."
+          notification_id: wallbox_voll
+
+  # =====================================================================
+  # EIGENE PV-REGELUNG - nur EIN Regler
+  # =====================================================================
+  #
+  # Die interne Solar-Surplus-Regelung der Tuya-Integration muss AUS bleiben.
+  # Unsere Regelung nutzt:
+  #   verfügbarer Überschuss = Einspeisung + aktuelle Wallboxleistung
+  #   Zielstrom = floor(verfügbare Leistung / 690), fein in 1-A-Schritten (6-16 A)
+  #
+  # Zeitverhalten:
+  #   Start:        60 s stabil über Startschwelle
+  #   Hochregeln:   60 s stabil höhere Stromstufe
+  #   Runterregeln: 30 s stabil niedrigere Stromstufe
+  #   Stop:        120 s stabil auf/unter Stoppschwelle
+  #
+  # Start-/Stoppschwellen bleiben über die vorhandenen number-Entities frei
+  # einstellbar. Start < 4140 W ist ausdrücklich erlaubt; dann wird mit 6 A
+  # geladen und die Differenz bewusst aus dem Netz bezogen.
+
+  # Sicherheitsnetz gegen zwei parallele Regler:
+  # Sobald unsere PV-Automatik aktiv ist, wird die interne Tuya-PV-Regelung
+  # ausgeschaltet und bei versehentlichem Wiedereinschalten sofort wieder deaktiviert.
+  - id: wallbox_eigene_pv_interne_regelung_aus
+    alias: "Wallbox: interne PV-Regelung deaktivieren"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.wallbox_pv_automatik
+        to: "on"
+      - trigger: state
+        entity_id: switch.tuya_ev_charger_solar_surplus_mode
+        to: "on"
+      - trigger: homeassistant
+        event: start
+    conditions:
+      - condition: state
+        entity_id: input_boolean.wallbox_pv_automatik
+        state: "on"
+      - condition: state
+        entity_id: switch.tuya_ev_charger_solar_surplus_mode
+        state: "on"
+    actions:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.tuya_ev_charger_solar_surplus_mode
+
+  # START: Überschuss muss 60 Sekunden stabil über der frei gewählten
+  # Startschwelle liegen. Sofortladen und PV-Pause haben Vorrang.
+  - id: wallbox_eigene_pv_start
+    alias: "Wallbox: eigene PV-Regelung starten"
+    mode: restart
+    triggers:
+      - trigger: template
+        value_template: >
+          {% set u = states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) %}
+          {% set st = states('number.tuya_ev_charger_surplus_start_threshold') | float(0) %}
+          {{ is_state('input_boolean.wallbox_pv_automatik','on')
+             and is_state('binary_sensor.wallbox_auto_angeschlossen','on')
+             and is_state('binary_sensor.wallbox_ladung_aktiv','off')
+             and is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','off')
+             and not is_state('switch.garage_tuya_ev_charger_force_charge','on')
+             and not is_state('timer.wallbox_pv_pause','active')
+             and st >= 0
+             and u >= st }}
+        for: "00:01:00"
+    actions:
+      - variables:
+          ziel: "{{ states('sensor.wallbox_pv_zielstrom_3_phasig') | int(6) }}"
+      - condition: template
+        value_template: "{{ ziel >= 6 }}"
+      - action: number.set_value
+        target:
+          entity_id: number.tuya_ev_charger_current_setpoint
+        data:
+          value: "{{ ziel }}"
+      - delay: "00:00:02"
+      - action: switch.turn_on
+        target:
+          entity_id: switch.tuya_ev_charger_charging_session
+      - action: timer.start
+        target:
+          entity_id: timer.wallbox_ladeannahme_test
+        data:
+          duration: "00:01:30"
+      - delay: "00:00:02"
+      - action: script.wallbox_regelung_log
+        data:
+          aktion: "PV-Start"
+          details: "60 s Startbedingung bestätigt · Ladeannahme-Test 90 s gestartet"
+
+  # LADEANNAHME ERKANNT: Sobald >300 W fließen, ist der Startversuch
+  # erfolgreich. Der 90-s-Test wird beendet. Ein eventuell gesetzter
+  # 'nimmt keine Ladung an'-Zustand wird zur Selbstheilung zurückgesetzt.
+  - id: wallbox_ladeannahme_erkannt
+    alias: "Wallbox: Ladeannahme erkannt"
+    mode: restart
+    triggers:
+      - trigger: template
+        value_template: >
+          {% set e = 'sensor.tuya_ev_charger_total_power' %}
+          {% set p = states(e) | float(0) %}
+          {% set pw = p if state_attr(e,'unit_of_measurement') == 'W' else p * 1000 %}
+          {{ has_value(e) and pw > 300 }}
+        for: "00:00:05"
+    actions:
+      - action: timer.cancel
+        target:
+          entity_id: timer.wallbox_ladeannahme_test
+      - if:
+          - condition: state
+            entity_id: input_boolean.wallbox_auto_nimmt_keine_ladung_an
+            state: "on"
+        then:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.wallbox_auto_nimmt_keine_ladung_an
+          - action: script.wallbox_regelung_log
+            data:
+              aktion: "Ladeannahme wieder erkannt"
+              details: "AC-Leistung länger als 5 s über 300 W"
+
+  # KEINE LADEANNAHME / AUTO VOLL: Dieser Check läuft ausschließlich nach
+  # einem tatsächlichen PV-Startversuch. Bleibt die reale AC-Leistung 90 s
+  # unter 300 W, obwohl Auto angeschlossen und genug PV vorhanden ist, wird
+  # der Start blockiert. Dadurch gibt es bei 100 % SoC keine Endlosschleife.
+  - id: wallbox_keine_ladeannahme
+    alias: "Wallbox: Auto nimmt keine Ladung an"
+    mode: restart
+    triggers:
+      - trigger: event
+        event_type: timer.finished
+        event_data:
+          entity_id: timer.wallbox_ladeannahme_test
+    conditions:
+      - condition: state
+        entity_id: input_boolean.wallbox_pv_automatik
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.wallbox_auto_nimmt_keine_ladung_an
+        state: "off"
+      - condition: state
+        entity_id: binary_sensor.wallbox_auto_angeschlossen
+        state: "on"
+      - condition: state
+        entity_id: switch.garage_tuya_ev_charger_force_charge
+        state: "off"
+      - condition: template
+        value_template: >
+          {% set e = 'sensor.tuya_ev_charger_total_power' %}
+          {% set p = states(e) | float(0) %}
+          {% set pw = p if state_attr(e,'unit_of_measurement') == 'W' else p * 1000 %}
+          {% set u = states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) %}
+          {% set st = states('number.tuya_ev_charger_surplus_start_threshold') | float(0) %}
+          {{ has_value(e) and pw < 300 and u >= st }}
+    actions:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.wallbox_auto_nimmt_keine_ladung_an
+      - action: switch.turn_off
+        target:
+          entity_id: switch.tuya_ev_charger_charging_session
+      - action: script.wallbox_regelung_log
+        data:
+          aktion: "Auto voll / keine Ladeannahme"
+          details: "90 s nach PV-Start weniger als 300 W trotz ausreichendem Überschuss · weitere PV-Starts bis zum Abstecken gesperrt"
+
+  # RESET BEIM ABSTECKEN: Ein neuer Steckvorgang ist immer ein neuer Versuch.
+  - id: wallbox_ladeannahme_reset_beim_abstecken
+    alias: "Wallbox: Ladeannahme-Sperre beim Abstecken zurücksetzen"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.wallbox_auto_angeschlossen
+        to: "off"
+    actions:
+      - action: timer.cancel
+        target:
+          entity_id: timer.wallbox_ladeannahme_test
+      - if:
+          - condition: state
+            entity_id: input_boolean.wallbox_auto_nimmt_keine_ladung_an
+            state: "on"
+        then:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.wallbox_auto_nimmt_keine_ladung_an
+          - action: script.wallbox_regelung_log
+            data:
+              aktion: "Fahrzeug abgesteckt"
+              details: "Ladeannahme-Sperre zurückgesetzt"
+
+  # HOCH: Erst nach 60 Sekunden stabil höherem Zielstrom.
+  - id: wallbox_eigene_pv_hochregeln
+    alias: "Wallbox: eigene PV-Regelung hochregeln"
+    mode: restart
+    triggers:
+      - trigger: template
+        value_template: >
+          {% set ziel = states('sensor.wallbox_pv_zielstrom_3_phasig') | int(0) %}
+          {% set ist = states('number.tuya_ev_charger_current_setpoint') | int(0) %}
+          {{ is_state('input_boolean.wallbox_pv_automatik','on')
+             and is_state('binary_sensor.wallbox_ladung_aktiv','on')
+             and is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','off')
+             and not is_state('switch.garage_tuya_ev_charger_force_charge','on')
+             and not is_state('timer.wallbox_pv_pause','active')
+             and ziel >= 6 and ziel > ist }}
+        for: "00:01:00"
+    actions:
+      - variables:
+          vorher: "{{ states('number.tuya_ev_charger_current_setpoint') | int(0) }}"
+          neu: "{{ states('sensor.wallbox_pv_zielstrom_3_phasig') | int(0) }}"
+      - action: number.set_value
+        target:
+          entity_id: number.tuya_ev_charger_current_setpoint
+        data:
+          value: "{{ neu }}"
+      - delay: "00:00:02"
+      - action: script.wallbox_regelung_log
+        data:
+          aktion: "PV hochgeregelt"
+          details: "{{ vorher }} A → {{ neu }} A nach 60 s"
+
+  # RUNTER: Bereits nach 30 Sekunden stabil niedrigerem Zielstrom.
+  - id: wallbox_eigene_pv_runterregeln
+    alias: "Wallbox: eigene PV-Regelung runterregeln"
+    mode: restart
+    triggers:
+      - trigger: template
+        value_template: >
+          {% set ziel = states('sensor.wallbox_pv_zielstrom_3_phasig') | int(0) %}
+          {% set ist = states('number.tuya_ev_charger_current_setpoint') | int(0) %}
+          {{ is_state('input_boolean.wallbox_pv_automatik','on')
+             and is_state('binary_sensor.wallbox_ladung_aktiv','on')
+             and is_state('input_boolean.wallbox_auto_nimmt_keine_ladung_an','off')
+             and not is_state('switch.garage_tuya_ev_charger_force_charge','on')
+             and not is_state('timer.wallbox_pv_pause','active')
+             and ziel >= 6 and ziel < ist }}
+        for: "00:00:30"
+    actions:
+      - variables:
+          vorher: "{{ states('number.tuya_ev_charger_current_setpoint') | int(0) }}"
+          neu: "{{ states('sensor.wallbox_pv_zielstrom_3_phasig') | int(0) }}"
+      - action: number.set_value
+        target:
+          entity_id: number.tuya_ev_charger_current_setpoint
+        data:
+          value: "{{ neu }}"
+      - delay: "00:00:02"
+      - action: script.wallbox_regelung_log
+        data:
+          aktion: "PV runtergeregelt"
+          details: "{{ vorher }} A → {{ neu }} A nach 30 s"
+
+  # STOP: Erst nach 120 Sekunden dauerhaft auf/unter der Stoppschwelle.
+  - id: wallbox_eigene_pv_stop
+    alias: "Wallbox: eigene PV-Regelung stoppen"
+    mode: restart
+    triggers:
+      - trigger: template
+        value_template: >
+          {% set u = states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) %}
+          {% set sp = states('number.tuya_ev_charger_surplus_stop_threshold') | float(0) %}
+          {{ is_state('input_boolean.wallbox_pv_automatik','on')
+             and is_state('binary_sensor.wallbox_ladung_aktiv','on')
+             and not is_state('switch.garage_tuya_ev_charger_force_charge','on')
+             and (is_state('timer.wallbox_pv_pause','active') or u <= sp) }}
+        for: "00:02:00"
+    actions:
+      - action: script.wallbox_regelung_log
+        data:
+          aktion: "PV-Stopp"
+          details: "120 s unter Stoppschwelle bzw. Pause bestätigt"
+      - action: switch.turn_off
+        target:
+          entity_id: switch.tuya_ev_charger_charging_session
+
+  # Wird die PV-Automatik bewusst ausgeschaltet, endet eine von ihr laufende
+  # Ladung zeitnah. Sofortladen wird dabei ausdrücklich nicht angefasst.
+  - id: wallbox_eigene_pv_aus
+    alias: "Wallbox: eigene PV-Regelung ausgeschaltet"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.wallbox_pv_automatik
+        to: "off"
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.wallbox_ladung_aktiv
+        state: "on"
+      - condition: state
+        entity_id: switch.garage_tuya_ev_charger_force_charge
+        state: "off"
+    actions:
+      - action: script.wallbox_regelung_log
+        data:
+          aktion: "PV-Automatik ausgeschaltet"
+          details: "Laufende PV-Ladung wird beendet"
+      - action: switch.turn_off
+        target:
+          entity_id: switch.tuya_ev_charger_charging_session
+
+  # Nach Sofortladen: Wenn unsere PV-Automatik aktiv ist, übernimmt sie.
+  # Ist genug PV für die Startschwelle vorhanden, wird nach 60 s gestartet;
+  # andernfalls bleibt die Wallbox aus.
+  - id: wallbox_eigene_pv_nach_sofortladen
+    alias: "Wallbox: eigene PV-Regelung nach Sofortladen"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: switch.garage_tuya_ev_charger_force_charge
+        from: "on"
+        to: "off"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.wallbox_pv_automatik
+        state: "on"
+    actions:
+      - delay: "00:00:03"
+      - variables:
+          u: "{{ states('sensor.wallbox_pv_ueberschuss_fuer_auto') | float(0) }}"
+          sp: "{{ states('number.tuya_ev_charger_surplus_stop_threshold') | float(0) }}"
+          ziel: "{{ states('sensor.wallbox_pv_zielstrom_3_phasig') | int(0) }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ u <= sp }}"
+            sequence:
+              - action: switch.turn_off
+                target:
+                  entity_id: switch.tuya_ev_charger_charging_session
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.wallbox_ladung_aktiv
+                state: "on"
+              - condition: template
+                value_template: "{{ ziel >= 6 }}"
+            sequence:
+              - action: number.set_value
+                target:
+                  entity_id: number.tuya_ev_charger_current_setpoint
+                data:
+                  value: "{{ ziel }}"
+
+
+
+  # Zusätzliche, sparsame Sitzungsprotokollierung. Keine Minutenspam-Logs:
+  # Start und Ende reichen für die zeitliche Einordnung; die eigentliche
+  # AC-Ladekurve kommt aus den Recorder-Sensoren oben.
+  - id: wallbox_ac_ladekurve_session_log
+    alias: "Wallbox: AC-Ladekurve Sitzung protokollieren"
+    mode: queued
+    max: 10
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.wallbox_ladung_aktiv
+        from: "off"
+        to: "on"
+        id: start
+      - trigger: state
+        entity_id: binary_sensor.wallbox_ladung_aktiv
+        from: "on"
+        to: "off"
+        for: "00:01:00"
+        id: ende
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: start
+            sequence:
+              - action: script.wallbox_regelung_log
+                data:
+                  aktion: "AC-Ladesitzung gestartet"
+                  details: "Recorder-Ladekurve läuft"
+          - conditions:
+              - condition: trigger
+                id: ende
+            sequence:
+              - action: script.wallbox_regelung_log
+                data:
+                  aktion: "AC-Ladesitzung beendet"
+                  details: "Session {{ states('sensor.tuya_ev_charger_session_energy') | float(0) | round(2) }} kWh"
